@@ -151,3 +151,35 @@ def test_review_days_ayarlanabilir(ctx_modul, hafiza, yaz):
 def test_ayar_dosyasi_yoksa_guvenli_varsayilan(ctx_modul, hafiza, yaz):
     yaz(hafiza, "domain/a.md")
     assert ctx_modul.dogrula(hafiza, tam=True) == []
+
+
+# ------------------------------------ saglama toplami (yanlis alarm onleme)
+
+def test_yil_dizisi_kredi_karti_SAYILMAZ(ctx_modul, hafiza, yaz):
+    """Olculmus regresyon: salt bicime bakan desen "2024 2025 2026 2027"u kart
+    saniyordu. Yanlis alarm veren kapi `--no-verify` aliskanligi yaratir."""
+    yaz(hafiza, "domain/a.md", govde="Olcumler 2024 2025 2026 2027 yillarinda alindi.")
+    assert ctx_modul.dogrula(hafiza, tam=True) == []
+
+
+def test_anahtar_gorunumlu_dizi_IBAN_sayilmaz(ctx_modul, hafiza, yaz):
+    yaz(hafiza, "domain/a.md", govde="Anahtar AB12CDEF1234GHIJ5678 olarak uretildi.")
+    assert ctx_modul.dogrula(hafiza, tam=True) == []
+
+
+def test_gercek_kart_LUHN_ile_yakalanir(ctx_modul, hafiza, yaz):
+    yaz(hafiza, "domain/a.md", govde="Kart: 4539 1488 0343 6467")
+    assert any("kredi karti" in m for _s, _y, m in ctx_modul.dogrula(hafiza, tam=True))
+
+
+def test_gercek_iban_mod97_ile_yakalanir(ctx_modul, hafiza, yaz):
+    """Ulkeden bagimsiz: mod-97 saglamasi TR de DE de gecerli olani ayirir."""
+    yaz(hafiza, "domain/a.md", govde="Konto: DE89 3704 0044 0532 0130 00")
+    assert any("IBAN" in m for _s, _y, m in ctx_modul.dogrula(hafiza, tam=True))
+
+
+def test_luhn_ve_mod97_dogrudan(ctx_modul):
+    assert ctx_modul._luhn_gecerli("4539148803436467")
+    assert not ctx_modul._luhn_gecerli("2024202520262027")
+    assert ctx_modul._iban_gecerli("TR330006100519786457841326")
+    assert not ctx_modul._iban_gecerli("AB12CDEF1234GHIJ5678")

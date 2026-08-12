@@ -553,10 +553,63 @@ _SECRET_DESENI = re.compile(
 # (orn. `pii_profiles: [tr]`). Gerekce: "11 haneli sayi" Turkiye'de kimlik
 # numarasidir ama baska bir projede sipariş/olcum numarasi olabilir — her yerde
 # kosarsa yanlis alarm uretir; hic kosmazsa gercek PII kacar.
+# BICIM TAHMINI YETMEZ, SAGLAMA TOPLAMI GEREKIR.
+#
+# Olculdu (0.5.0 gelistirme turu): salt bicime bakan desenler gunluk metni PII
+# saniyordu — "2024 2025 2026 2027" (yil dizisi) kredi kartina, "AB12CDEF1234..."
+# (anahtar/hash) IBAN'a benziyordu. Yanlis alarm veren kapi kapidan SAYILMAZ:
+# kullanici `--no-verify` aliskanligi edinir ve gercek PII de gecer.
+#
+# Cozum: bu iki desende bicim yalnizca ADAY uretir; karar Luhn (kart) ve
+# ISO 7064 mod-97 (IBAN) saglamasiyla verilir. Rastgele rakam dizisinin Luhn'dan
+# gecme olasiligi ~1/10, mod-97'den ~1/97'dir.
+
+def _luhn_gecerli(hane: str) -> bool:
+    toplam, ikili = 0, False
+    for c in reversed(hane):
+        d = ord(c) - 48
+        if ikili:
+            d *= 2
+            if d > 9:
+                d -= 9
+        toplam += d
+        ikili = not ikili
+    return toplam % 10 == 0
+
+
+def _iban_gecerli(ham: str) -> bool:
+    s = re.sub(r"[\s-]", "", ham).upper()
+    if not (15 <= len(s) <= 34):
+        return False
+    tasinmis = s[4:] + s[:4]
+    sayisal = "".join(str(ord(c) - 55) if c.isalpha() else c for c in tasinmis)
+    try:
+        return int(sayisal) % 97 == 1
+    except ValueError:
+        return False
+
+
+def _saglamali(desen: str, dogrulayici):
+    """Bicimsel aday uretir, karari `dogrulayici`ya birakir."""
+    derli = re.compile(desen)
+
+    class _Saglamali:
+        @staticmethod
+        def search(metin: str):
+            for m in derli.finditer(metin):
+                if dogrulayici(m.group(0)):
+                    return m
+            return None
+
+    return _Saglamali
+
+
 _PII_EVRENSEL = [
     ("e-posta", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
-    ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Za-z0-9]{4}){3,7}[ ]?[A-Za-z0-9]{1,4}\b")),
-    ("kredi karti gorunumlu 16 hane", re.compile(r"(?<!\d)(?:\d{4}[ -]?){3}\d{4}(?!\d)")),
+    ("IBAN", _saglamali(r"\b[A-Z]{2}\d{2}(?:[ -]?[A-Za-z0-9]{4}){2,7}[ -]?[A-Za-z0-9]{1,4}\b",
+                        _iban_gecerli)),
+    ("kredi karti", _saglamali(r"(?<!\d)(?:\d{4}[ -]?){3}\d{4}(?!\d)",
+                               lambda s: _luhn_gecerli(re.sub(r"[ -]", "", s)))),
 ]
 
 _PII_PROFILLERI = {
@@ -703,6 +756,19 @@ def komut_validate(args) -> int:
     else:
         print(f"\n{len(hatalar)} hata · {len(uyarilar)} uyari"
               + ("" if args.tam else " · PII taramasi KOSULMADI (--tam)"))
+
+    # Korumanin KAPSAMI her zaman soylenir. Aksi halde profil tanimsizken tarama
+    # sessizce daralir ve "✓ bulgu yok" ciktisi, aslinda hic BAKILMAMIS bir PII
+    # sinifi icin de temiz izlenimi verir — sessizce yanlis olmanin ta kendisi.
+    if args.tam:
+        profiller = _liste(hafiza_ayarlari(hafiza).get("pii_profiles"))
+        if profiller:
+            print(f"  PII kapsami: evrensel + profil({', '.join(profiller)})")
+        else:
+            print("  PII kapsami: YALNIZ EVRENSEL (e-posta · IBAN · kart). Ulkeye ozel "
+                  "kimlik/telefon desenleri KOSMADI —\n  acmak icin: "
+                  f"{HAFIZA_AYAR} -> pii_profiles: [tr]  (secenekler: "
+                  f"{', '.join(sorted(_PII_PROFILLERI))})")
     return 1 if hatalar else 0
 
 
