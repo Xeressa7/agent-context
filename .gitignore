@@ -3,3 +3,7 @@ __pycache__/
 *.pyo
 .DS_Store
 Thumbs.db
+
+# Go
+go/ctx
+go/ctx.exe
