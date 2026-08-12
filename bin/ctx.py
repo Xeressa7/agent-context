@@ -487,6 +487,133 @@ def komut_validate(args) -> int:
     return 1 if hatalar else 0
 
 
+# ---------------------------------------------------------------- close
+#
+# YAPISAL CAPTURE KARARI. Cozdugu problem: hafizaya yazmak bugune kadar tamamen
+# gonulluydu — ajan unutursa hicbir sey olmuyordu. 2026-08-12 denetiminde bulunan
+# uc bosluktan UCU DE bu yuzden olustu.
+#
+# Ilke: KARAR MUHAKEMEDE, DISIPLIN TOOLING'DE. Bu komut "sunu hafizaya yaz"
+# DEMEZ (o muhakeme isi); "bu karar verilmeden oturum kapanmasin" der.
+#
+#   ctx close --yok ["gerekce"]        durable bulgu yok — GECERLI bir karardir
+#   ctx close --not <yol> [--not ...]  su not(lar) yazildi
+#   ctx close                          durum + karar bekliyor (cikis 1)
+#   ctx close --kontrol                onceki oturum kararsiz mi? (hook icin)
+#
+# Karar `<hafiza>/sessions/capture-log.jsonl`e yazilir. Capture Decision Coverage
+# metrigi bu logdan BEDAVA turetilir; ayri bir olcum sistemi gerekmez.
+
+KAPANIS_LOG = "sessions/capture-log.jsonl"
+
+
+def _git(repo: Path, *arg) -> str:
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *arg],
+                           capture_output=True, text=True, timeout=15)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _calisma_durumu(repo: Path) -> dict:
+    """Bulunulan repodaki 'anlamli is' sinyalleri. Kirli dosya varsa is yapilmistir."""
+    kok = _git(repo, "rev-parse", "--show-toplevel") or str(repo)
+    kirli = [s for s in _git(repo, "status", "--porcelain").splitlines() if s.strip()]
+    return {
+        "repo": Path(kok).name,
+        "head": _git(repo, "rev-parse", "--short", "HEAD"),
+        "kirli": len(kirli),
+    }
+
+
+def _log_satirlari(hafiza: Path) -> list[dict]:
+    import json
+    p = hafiza / KAPANIS_LOG
+    if not p.is_file():
+        return []
+    kayitlar = []
+    for satir in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        satir = satir.strip()
+        if not satir:
+            continue
+        try:
+            kayitlar.append(json.loads(satir))
+        except Exception:
+            continue
+    return kayitlar
+
+
+def komut_close(args) -> int:
+    import json
+    from datetime import datetime
+
+    _, _, hafiza = baglam_yukle(args.repo)
+    durum = _calisma_durumu(Path(args.repo) if args.repo else Path.cwd())
+    log_yolu = hafiza / KAPANIS_LOG
+
+    if args.kontrol:
+        # Hook icin: son kayit ne zaman? Kirli is var ama hic karar yoksa uyar.
+        kayitlar = _log_satirlari(hafiza)
+        son = kayitlar[-1] if kayitlar else None
+        if durum["kirli"] and (son is None or son.get("head") != durum["head"]
+                               or son.get("repo") != durum["repo"]):
+            print(f"⚠ {durum['repo']}: {durum['kirli']} degisik dosya var, bu HEAD icin "
+                  f"capture karari YOK.\n  `ctx close --yok \"...\"` ya da "
+                  f"`ctx close --not <yol>` ile kapat.")
+            return 1
+        print("✓ capture karari guncel")
+        return 0
+
+    if not args.yok and not args.not_:
+        print(f"repo: {durum['repo']} · HEAD: {durum['head'] or '?'} · "
+              f"degisik dosya: {durum['kirli']}")
+        kayitlar = _log_satirlari(hafiza)
+        if kayitlar:
+            son = kayitlar[-1]
+            print(f"son karar: {son.get('ts', '?')} · {son.get('karar', '?')}")
+        print("\nKARAR BEKLENIYOR — bu oturumda kalici bir bulgu var mi?")
+        print("  yok  : ctx close --yok \"gerekce\"")
+        print("  var  : ctx close --not pitfalls/ornek.md [--not ...]")
+        print("\n'Durable bulgu yok' GECERLI bir karardir; karar VERMEMEK gecersizdir.")
+        return 1
+
+    kayit = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "repo": durum["repo"],
+        "head": durum["head"],
+        "kirli": durum["kirli"],
+    }
+
+    if args.not_:
+        eksik = [n for n in args.not_ if not (hafiza / n).is_file()]
+        if eksik:
+            print("HATA: hafizada bulunmayan not(lar): " + ", ".join(eksik))
+            return 2
+        kayit["karar"] = "captured"
+        kayit["notlar"] = list(args.not_)
+    else:
+        kayit["karar"] = "none"
+        if isinstance(args.yok, str) and args.yok:
+            kayit["gerekce"] = args.yok
+
+    log_yolu.parent.mkdir(parents=True, exist_ok=True)
+    with log_yolu.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(kayit, ensure_ascii=False) + "\n")
+
+    if kayit["karar"] == "captured":
+        print(f"✓ capture karari kaydedildi: {len(args.not_)} not "
+              f"({', '.join(args.not_)})")
+    else:
+        print("✓ capture karari kaydedildi: durable bulgu yok")
+
+    kayitlar = _log_satirlari(hafiza)
+    kapali = sum(1 for k in kayitlar if k.get("karar") in ("none", "captured"))
+    if kayitlar:
+        print(f"  Capture Decision Coverage: {kapali}/{len(kayitlar)} oturum kararla kapandi")
+    return 0
+
+
 # ---------------------------------------------------------------- doctor
 
 def komut_doctor(args) -> int:
@@ -627,6 +754,16 @@ def main() -> int:
     d = alt.add_parser("doctor", help="kurulum saglik kontrolu")
     d.add_argument("--repo")
     d.set_defaults(fn=komut_doctor)
+
+    c = alt.add_parser("close", help="oturumu capture karariyla kapat (yapisal kapi)")
+    c.add_argument("--repo")
+    c.add_argument("--yok", nargs="?", const=True, default=False,
+                   metavar="GEREKCE", help="durable bulgu yok (gecerli karar)")
+    c.add_argument("--not", dest="not_", action="append", metavar="YOL",
+                   help="yazilan notun hafizaya goreli yolu (birden cok kez verilebilir)")
+    c.add_argument("--kontrol", action="store_true",
+                   help="karar bekleyen oturum var mi? (hook icin; varsa cikis 1)")
+    c.set_defaults(fn=komut_close)
 
     v = alt.add_parser("validate", help="not kalitesi dogrulamasi (doctor + pre-commit ayni motoru kullanir)")
     v.add_argument("--repo")
