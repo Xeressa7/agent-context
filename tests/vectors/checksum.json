@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "description": "PII karari bicimle degil SAGLAMAYLA verilir. Bicim yalniz aday uretir.",
+  "luhn": [
+    {"input": "4539148803436467", "expect": true, "why": "gecerli kart numarasi (test verisi)"},
+    {"input": "2024202520262027", "expect": false,
+     "why": "OLCULMUS YANLIS ALARM: yil dizisi '2024 2025 2026 2027' kart saniliyordu"},
+    {"input": "1234567890123456", "expect": false, "why": "artan dizi Luhn'dan gecmez"},
+    {"input": "1234567812345670", "expect": true, "why": "gecerli saglama, farkli desen"}
+  ],
+  "iban": [
+    {"input": "TR330006100519786457841326", "expect": true, "why": "gecerli TR IBAN"},
+    {"input": "DE89370400440532013000", "expect": true, "why": "gecerli DE IBAN — ulkeden bagimsiz mod-97"},
+    {"input": "GB82WEST12345698765432", "expect": true, "why": "gecerli GB IBAN"},
+    {"input": "AB12CDEF1234GHIJ5678", "expect": false,
+     "why": "OLCULMUS YANLIS ALARM: anahtar/hash gorunumlu dizi IBAN saniliyordu"},
+    {"input": "TR330006100519786457841327", "expect": false, "why": "son hane bozuk — mod-97 tutmaz"},
+    {"input": "TR33", "expect": false, "why": "cok kisa"}
+  ]
+}

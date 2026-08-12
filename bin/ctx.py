@@ -114,7 +114,7 @@ _AYRISMAYAN = str.maketrans({
     "ı": "i", "İ": "I",          # tr/az
     "ł": "l", "Ł": "L",          # pl
     "ø": "o", "Ø": "O",          # da/no
-    "đ": "d", "Đ": "D",          # hr/sr/vi
+    "đ": "dj", "Đ": "DJ",        # hr/sr/bs — "Đakovo" ve "Djakovo" ayni anahtara dussun
     "ð": "d", "Ð": "D", "þ": "th", "Þ": "TH",   # is
     "ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE",
 })

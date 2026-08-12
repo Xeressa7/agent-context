@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Frontmatter ayristirma ve liste normalizasyonu.",
+  "parse": [
+    {"text": "---\ntitle: Bir baslik\nstatus: active\n---\n\ngovde",
+     "expect": {"title": "Bir baslik", "status": "active"},
+     "why": "duz anahtar: deger"},
+    {"text": "---\ntitle: \"tirnakli\"\n---\n", "expect": {"title": "tirnakli"},
+     "why": "tirnak soyulur"},
+    {"text": "---\nscope: [a, b]\n---\n", "expect": {"scope": "a, b"},
+     "why": "liste tek string'e duzlesir — _liste() sonra virgulle boler"},
+    {"text": "govde, frontmatter yok", "expect": {},
+     "why": "frontmatter yoksa bos dict"},
+    {"text": "---\ntitle: acik kalan\n", "expect": {},
+     "why": "kapanmamis frontmatter ayristirilmaz"}
+  ],
+  "list": [
+    {"input": "a, b", "expect": ["a", "b"], "why": "BUG (0.6.0): virgullu string bolunmezse 'a, b' TEK etiket sanilir"},
+    {"input": ["a", "b"], "expect": ["a", "b"], "why": "gercek liste"},
+    {"input": "tek", "expect": ["tek"], "why": "tek deger"},
+    {"input": "", "expect": [], "why": "bos"},
+    {"input": null, "expect": [], "why": "yok"},
+    {"input": " bosluklu , kirpilir ", "expect": ["bosluklu", "kirpilir"], "why": "kirpma"}
+  ]
+}

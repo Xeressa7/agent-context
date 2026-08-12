@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "description": "Gorunurluk: status (active|archived) + scope (etiket listesi). scope BOSSA evrensel. Eski tek-eksenli lifecycle alani cevrilir.",
+  "cases": [
+    {
+      "note": {
+        "status": "active"
+      },
+      "repo_scope": [
+        "v2"
+      ],
+      "visible": true,
+      "why": "scope'u olmayan not EVRENSELDIR — her kapsamda gecerli"
+    },
+    {
+      "note": {
+        "status": "active"
+      },
+      "repo_scope": [],
+      "visible": true,
+      "why": "kapsam tanimsizsa filtre uygulanmaz (tek cagli proje)"
+    },
+    {
+      "note": {
+        "scope": "v1"
+      },
+      "repo_scope": [
+        "v2"
+      ],
+      "visible": false,
+      "why": "kesisme yok — yanlis cagin bilgisi GORUNMEZ"
+    },
+    {
+      "note": {
+        "scope": "v1"
+      },
+      "repo_scope": [
+        "v1"
+      ],
+      "visible": true,
+      "why": "kesisme var"
+    },
+    {
+      "note": {
+        "scope": "server, worker"
+      },
+      "repo_scope": [
+        "worker",
+        "cli"
+      ],
+      "visible": true,
+      "why": "coklu etikette TEK kesisme yeterli; ayrica virgullu string dogru bolunmeli"
+    },
+    {
+      "note": {
+        "scope": "server, worker"
+      },
+      "repo_scope": [
+        "web"
+      ],
+      "visible": false,
+      "why": "kesisme yok"
+    },
+    {
+      "note": {
+        "scope": "v1"
+      },
+      "repo_scope": [],
+      "visible": true,
+      "why": "repo kapsami yoksa scope'lu not da gelir — filtre kapali"
+    },
+    {
+      "note": {
+        "status": "archived"
+      },
+      "repo_scope": [
+        "v2"
+      ],
+      "visible": false,
+      "why": "arsivlenmis not varsayilan GELMEZ"
+    },
+    {
+      "note": {
+        "status": "archived"
+      },
+      "repo_scope": [
+        "v2"
+      ],
+      "archive": true,
+      "visible": true,
+      "why": "acikca istenirse gelir (--all)"
+    },
+    {
+      "note": {
+        "lifecycle": "product"
+      },
+      "repo_scope": [
+        "legacy"
+      ],
+      "visible": true,
+      "why": "ESKI ALAN: product -> evrensel"
+    },
+    {
+      "note": {
+        "lifecycle": "current"
+      },
+      "repo_scope": [
+        "legacy"
+      ],
+      "visible": false,
+      "why": "ESKI ALAN: current -> scope [current]; eski davranis birebir korunmali"
+    },
+    {
+      "note": {
+        "lifecycle": "legacy"
+      },
+      "repo_scope": [
+        "legacy"
+      ],
+      "visible": true,
+      "why": "ESKI ALAN"
+    },
+    {
+      "note": {
+        "lifecycle": "historical"
+      },
+      "repo_scope": [
+        "current"
+      ],
+      "visible": false,
+      "why": "ESKI ALAN: historical -> archived"
+    },
+    {
+      "note": {
+        "lifecycle": "legacy",
+        "scope": "v2"
+      },
+      "repo_scope": [
+        "v2"
+      ],
+      "visible": true,
+      "why": "yeni alanlar eskisini EZER"
+    }
+  ],
+  "validity": [
+    {
+      "note": {
+        "lifecycle": "product"
+      },
+      "status": "active",
+      "scope": [],
+      "why": "eski product -> evrensel (scope yok)"
+    },
+    {
+      "note": {
+        "lifecycle": "current"
+      },
+      "status": "active",
+      "scope": [
+        "current"
+      ],
+      "why": "eski current -> scope etiketi [current]"
+    },
+    {
+      "note": {
+        "lifecycle": "legacy"
+      },
+      "status": "active",
+      "scope": [
+        "legacy"
+      ],
+      "why": "eski legacy -> scope etiketi [legacy]"
+    },
+    {
+      "note": {
+        "lifecycle": "historical"
+      },
+      "status": "archived",
+      "scope": [],
+      "why": "eski historical -> archived"
+    },
+    {
+      "note": {},
+      "status": "active",
+      "scope": [],
+      "why": "alan yoksa guvenli varsayilan: aktif + evrensel"
+    },
+    {
+      "note": {
+        "scope": "a, b"
+      },
+      "status": "active",
+      "scope": [
+        "a",
+        "b"
+      ],
+      "why": "virgullu scope string'i listeye bolunur"
+    }
+  ]
+}

@@ -87,8 +87,14 @@ yaratır ve gerçek PII de geçer.
 python -m pytest tests/ -q
 ```
 
-Testler davranışın sözleşmesidir — dile bağlı değildir. Planlanan Go
-implementasyonu aynı sözleşmeye karşı doğrulanacak.
+**Altın vektörler** (`tests/vectors/*.json`) davranışı **dilden bağımsız** tarif
+eder: normalizasyon, skorlama (mutlak puanlarla), görünürlük, sağlama toplamları,
+frontmatter. Python bunları koşar; planlanan Go implementasyonu **aynı dosyaları**
+okuyup aynı sonucu üretecek — "doğru mu taşıdım" sorusu kanaat değil, geçen/kalan
+sayısı olur.
+
+Her vaka bir `why` alanı taşır: vektör hangi arızayı ya da kararı kilitliyor.
+Bir vaka değiştirilecekse önce o cümle okunur (bu zorunluluk da testli).
 
 ## Bilinen sınırlar
 

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Arama normalizasyonu: Unicode NFKD + combining dusurme + ayrismayan harf tablosu + casefold. Dile bagli DEGIL.",
+  "cases": [
+    {"input": "İSTANBUL", "expect": "istanbul",
+     "why": "Python'da \"İ\".lower() iki karakter uretir (i + U+0307 combining dot); o hale gelen metin 'istanbul' aramasiyla ESLESMEZ"},
+    {"input": "IZGARA", "expect": "izgara",
+     "why": "tr: I -> i katlamasi; ASCII yazimla ayni anahtara dusmeli"},
+    {"input": "ŞABLON", "expect": "sablon",
+     "why": "aksan dusurme: kullanici Turkce karakter yazmadan da bulabilmeli"},
+    {"input": "ŞĞÜÖÇ", "expect": "sguoc", "why": "tr aksanli harfler toplu"},
+    {"input": "HAKEDİŞ", "expect": "hakedis", "why": "gercek alan terimi, karisik aksan"},
+    {"input": "CRÈCHE", "expect": "creche", "why": "fr: grave accent"},
+    {"input": "GRÜNDGENS", "expect": "grundgens", "why": "de: umlaut"},
+    {"input": "MAÑANA", "expect": "manana", "why": "es: tilde"},
+    {"input": "ŁÓDŹ", "expect": "lodz",
+     "why": "pl: L-stroke NFKD ile AYRISMAZ, ayrismayan-harf tablosu gerektirir"},
+    {"input": "ØSTERGAARD", "expect": "ostergaard", "why": "da/no: O-stroke, ayni sinif"},
+    {"input": "STRAßE", "expect": "strasse", "why": "de: eszett iki harfe acilir"},
+    {"input": "STRASSE", "expect": "strasse", "why": "ustteki ile AYNI anahtara dusmeli"},
+    {"input": "ĐAKOVO", "expect": "djakovo", "why": "hr/sr: D-stroke"},
+    {"input": "already lower", "expect": "already lower", "why": "degisiklik yok"},
+    {"input": "", "expect": "", "why": "bos girdi cokmemeli"}
+  ]
+}

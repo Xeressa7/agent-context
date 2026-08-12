@@ -201,6 +201,13 @@ düşürülmesi + `casefold()`. Böylece `şablon`/`sablon`, `crèche`/`creche`,
 `Łódź`/`lodz` aynı anahtara düşer. `.lower()` tek başına **kullanılmaz** —
 `"İ".lower()` iki karakter (`i` + U+0307) üretir ve arama sessizce eşleşmez.
 
+## Davranış sözleşmesi
+
+Standardın davranışsal kısmı `tests/vectors/*.json` altında **dilden bağımsız**
+altın vektörlerle tanımlıdır: arama normalizasyonu, alan ağırlıklı skorlama
+(mutlak puanlar), görünürlük kuralı, PII sağlama toplamları, frontmatter
+ayrıştırma. Bir implementasyon bu vektörleri geçiyorsa uyumludur.
+
 ## Adapter'lar
 
 Her repo kökünde iki dosya durur:

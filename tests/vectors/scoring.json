@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "description": "Alan agirlikli skorlama. Aday uretimi VEYA (eslesmeyen kelime ELEMEZ), ham puan kapsama carpaniyla olceklenir, cok kelimeli tam ifade bonus alir. Puanlar MUTLAK — sessiz skorlama kaymasi test kirmali.",
+  "weights": {"yol-tam": 100, "yol-kismi": 70, "kod": 60, "baslik": 40,
+              "etiket": 30, "bilesen": 20, "aciklama": 12, "govde": 3},
+  "coverage_base": 0.4,
+  "cases": [
+    {"path": "domain/billing.md", "title": "T", "description": "D", "body": "alakasiz govde",
+     "query": "billing", "score": 100.0, "reasons": ["yol"], "matched": 1,
+     "why": "dosya adi kokune BIREBIR esitlik en yuksek agirlik"},
+
+    {"path": "domain/other.md", "title": "T", "description": "D", "body": "billing gecen govde",
+     "query": "billing", "score": 3.0, "reasons": ["gövde"], "matched": 1,
+     "why": "ayni kelime govdede en dusuk agirlik — yol isabetini gecemez"},
+
+    {"path": "domain/a.md", "title": "T", "description": "D", "body": "kod: `distinct_lab_names` burada",
+     "query": "distinct_lab_names", "score": 60.0, "reasons": ["kod"], "matched": 1,
+     "why": "backtick icindeki tanimlayici ayri cikarilir; fonksiyon adiyla arama calissin"},
+
+    {"path": "domain/a.md", "title": "tenant izolasyonu", "description": "d", "body": "govde",
+     "query": "tenant izolasyonu", "score": 120.0, "reasons": ["ifade", "başlık"], "matched": 2,
+     "why": "2 kelime x 40 (baslik) = 80, kapsama 2/2 = 1.0, + tam ifade bonusu 40"},
+
+    {"path": "domain/b.md", "title": "tenant baska", "description": "d", "body": "govde",
+     "query": "tenant izolasyonu", "score": 28.0, "reasons": ["başlık"], "matched": 1,
+     "why": "OLCULMUS ARIZA (2026-08-12): eski VE mantigi bu notu tamamen ELIYORDU. Simdi aday kaliyor ama kapsama carpaniyla geriye dusuyor: 40 x (0.4 + 0.6 x 0.5) = 28"},
+
+    {"path": "domain/a.md", "title": "T", "description": "D", "body": "govde",
+     "query": "hicyok", "score": null, "reasons": [], "matched": 0,
+     "why": "hicbir kelime tutmazsa not ADAY DEGIL (null doner)"},
+
+    {"path": "domain/a.md", "title": "T", "description": "D", "body": "govde",
+     "query": "hicyok dahayok", "score": null, "reasons": [], "matched": 0,
+     "why": "cok kelimeli sorguda da ayni: sifir eslesme = aday degil"}
+  ]
+}
