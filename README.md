@@ -103,3 +103,23 @@ Bir vaka değiştirilecekse önce o cümle okunur (bu zorunluluk da testli).
 - `bootstrap` kancaları yalnız Claude Code'a kurar; diğer araçlar dosyadan okur
   (`AGENTS.md` bloğu) ama otomatik kurulumları yoktur.
 - Çok yazarlı/ekip senaryosu tanımsız.
+
+## Go geçişi — durum
+
+`go/` altında, aynı repoda. Python sürümü **çalışır ve şimdilik kanoniktir**;
+Go tarafı sözleşmeyi (`tests/vectors/*.json`) sağladıkça devralacak.
+
+**Bitti:** çekirdek — `normalize` · `checksum` · `visibility` · `scoring`.
+Beş vektör grubunun tamamı Go'da geçiyor; Go testi Python'un okuduğu **aynı**
+JSON dosyalarını okur, böylece iki implementasyon karşılaştırılabilir kalır.
+
+```sh
+cd go && go test ./...
+```
+
+**Kalan:** CLI komutları (`search` · `index` · `validate` · `close` · `doctor` ·
+`init` · `bootstrap` · `migrate`) ve dosya sistemi katmanı (manifest okuma,
+not gezme, `ctx:index` blok yazımı, hook/kanca kurulumu).
+
+**Bitirme ölçütü:** `ctx.exe` ile Python sürümü aynı hafızada yan yana koşup
+`search`, `index` ve `validate` çıktılarında birebir aynı sonucu vermeli.
