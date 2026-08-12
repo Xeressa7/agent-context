@@ -1,4 +1,4 @@
-"""ctx — agent context aracı V0 (search · doctor · init).
+"""ctx — agent context aracı (search · index · validate · close · doctor · init · bootstrap).
 
 Yalnız Python stdlib (>= 3.10). context.yaml basit bir satir ayristiricisiyla okunur;
 PyYAML bagimliligi YOKTUR.
@@ -11,6 +11,7 @@ Turkce: lower()/casefold() KULLANILMAZ — asagidaki INDIRME tablosu kullanilir.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -341,6 +342,127 @@ def komut_search(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- index
+#
+# HER-ZAMAN-YUKLU HARITA. 2026-08-12'de olculdu: 21 notluk korpus koca bir
+# oturum boyunca HIC acilmadi — cunku `ctx search`'u tetikleyen hicbir sey yok.
+# Eski harness auto-memory'sinin tek gercek ustunlugu indeksinin (MEMORY.md)
+# bedavaya her oturuma yuklenmesiydi; bu komut onu harness-BAGIMSIZ geri takar.
+#
+# Uretici TEK (bu komut), tuketici COK:
+#   • Claude Code       -> SessionStart hook ciktiyi baglama basar (dosyaya dokunmaz)
+#   • Codex/Cursor/...  -> AGENTS.md icindeki isaretli blok (`ctx index --yaz`)
+# Harness'tan bagimsiz yol DAIMA dosyadir; hook yalnizca tazelik kolayligidir.
+#
+# Blok notun KENDISI DEGILDIR, yalnizca "ne var, nerede" haritasidir (not basina
+# tek satir). Boylece "butun korpusu yukleme" yasagi korunur: ajan haritayi gorur,
+# ilgili notu ACAR.
+
+INDEX_BAS = "<!-- ctx:index:basla -->"
+INDEX_SON = "<!-- ctx:index:bitir -->"
+INDEX_ACIKLAMA_SINIRI = 95
+# Okuma onceligi: once urun gercegi, sonra mimari/karar, sonra ders.
+INDEX_KLASOR_SIRASI = ("domain", "architecture", "decisions", "pitfalls", "legacy", "historical")
+
+
+def _kisalt(metin: str, sinir: int = INDEX_ACIKLAMA_SINIRI) -> str:
+    metin = " ".join((metin or "").split())
+    if len(metin) <= sinir:
+        return metin
+    kesik = metin[:sinir].rsplit(" ", 1)[0]
+    return (kesik or metin[:sinir]) + "…"
+
+
+def index_govde(veri: dict, hafiza: Path, tum: bool = False) -> str:
+    """Rol filtresine gore not haritasi (markdown). Deterministik: notlari_gez
+    yol sirali, klasor sirasi sabit."""
+    rol = str(veri.get("role", "current"))
+    izin = None if tum else FILTRE.get(rol, FILTRE["current"])
+
+    gruplar: dict[str, list[str]] = {}
+    sayi = 0
+    for p, goreli in notlari_gez(hafiza):
+        fm = frontmatter(p.read_text(encoding="utf-8", errors="replace"))
+        if izin is not None and fm.get("lifecycle", "") not in izin:
+            continue
+        grup, ad = goreli.parts[0], "/".join(goreli.parts[1:])
+        gruplar.setdefault(grup, []).append(f"- `{ad}` — {_kisalt(fm.get('description', ''))}")
+        sayi += 1
+
+    hafiza_adi = Path(str(veri.get("memory_path", hafiza))).name
+    satirlar = [
+        f"### Hafıza haritası — {hafiza_adi} · rol: {rol} · {sayi} not",
+        "",
+        "Bu bir **harita**, notun kendisi değil: ilgili satırı görünce **o notu aç**. "
+        'Hedefli arama `ctx search "<sorgu>"`; bütün korpusu topluca yükleme.',
+        f"Açık işler `{veri.get('task_state', 'tasks/OPEN.md')}` · "
+        f"oturum devamı `{veri.get('session_state', 'sessions/CURRENT.md')}`.",
+    ]
+    sirali = [g for g in INDEX_KLASOR_SIRASI if g in gruplar]
+    sirali += sorted(g for g in gruplar if g not in INDEX_KLASOR_SIRASI)
+    for grup in sirali:
+        satirlar += ["", f"**{grup}/**", *gruplar[grup]]
+    return "\n".join(satirlar)
+
+
+def _index_hedefleri(manifest: Path, veri: dict) -> list[Path]:
+    """context.yaml `index_targets` (yoksa AGENTS.md). Hedef yalnız AGENTS.md
+    olmak zorunda degil — isaretli blogu tasiyan her dosya (Cursor kurali,
+    copilot-instructions.md, ...) tuketici olabilir."""
+    ham = veri.get("index_targets") or ["AGENTS.md"]
+    if isinstance(ham, str):
+        ham = [ham]
+    return [(manifest.parent / str(h)).resolve() for h in ham]
+
+
+def _blok_degistir(metin: str, govde: str) -> str | None:
+    """Isaretli blogun ICINI degistirir; isaret yoksa None. Dosyanin satir sonu
+    bicimi KORUNUR (LF dosyayi CRLF'e cevirmek butun dosyayi diff'e sokardi)."""
+    i, j = metin.find(INDEX_BAS), metin.find(INDEX_SON)
+    if i == -1 or j == -1 or j < i:
+        return None
+    nl = "\r\n" if "\r\n" in metin else "\n"
+    blok = nl.join([INDEX_BAS, *govde.split("\n"), INDEX_SON])
+    return metin[:i] + blok + metin[j + len(INDEX_SON):]
+
+
+def _oku_ham(yol: Path) -> str:
+    with open(yol, encoding="utf-8", newline="") as f:
+        return f.read()
+
+
+def komut_index(args) -> int:
+    manifest, veri, hafiza = baglam_yukle(args.repo)
+    govde = index_govde(veri, hafiza, tum=args.all)
+
+    if not (args.yaz or args.kontrol):
+        print(govde)
+        return 0
+
+    sorunlu = 0
+    for hedef in _index_hedefleri(manifest, veri):
+        if not hedef.is_file():
+            print(f"✗ {hedef} · dosya yok")
+            sorunlu += 1
+            continue
+        metin = _oku_ham(hedef)
+        yeni = _blok_degistir(metin, govde)
+        if yeni is None:
+            print(f"✗ {hedef} · ctx:index isareti yok — hedef dosyaya su iki satiri "
+                  f"komsu satirlarda ekle:\n    {INDEX_BAS}\n    {INDEX_SON}")
+            sorunlu += 1
+        elif yeni == metin:
+            print(f"✓ {hedef.name} · guncel")
+        elif args.kontrol:
+            print(f"⚠ {hedef} · index blogu BAYAT — `ctx index --yaz`")
+            sorunlu += 1
+        else:
+            with open(hedef, "w", encoding="utf-8", newline="") as f:
+                f.write(yeni)
+            print(f"✓ {hedef} · yazildi")
+    return 1 if sorunlu else 0
+
+
 # ---------------------------------------------------------------- validate
 #
 # TEK dogrulama motoru. Tuketiciler: `ctx doctor`, `ctx validate`, pre-commit hook.
@@ -604,6 +726,21 @@ def komut_close(args) -> int:
     if kayit["karar"] == "captured":
         print(f"✓ capture karari kaydedildi: {len(args.not_)} not "
               f"({', '.join(args.not_)})")
+        # Yeni not yazildi -> her-zaman-yuklu harita BAYATLADI. Tazelemeyi ayri bir
+        # disipline birakmak, tam da bu sistemin bir kez batirdigi sey: hook'u olan
+        # arac (Claude Code) haritayi canli uretir ama Codex/Cursor dosyadan okur ve
+        # yeni notu HIC gormezdi. Kapanisin dogal parcasi olarak burada tazelenir.
+        manifest, veri, _ = baglam_yukle(args.repo)
+        govde = index_govde(veri, hafiza)
+        for hedef in _index_hedefleri(manifest, veri):
+            if not hedef.is_file():
+                continue
+            metin = _oku_ham(hedef)
+            yeni = _blok_degistir(metin, govde)
+            if yeni is not None and yeni != metin:
+                with open(hedef, "w", encoding="utf-8", newline="") as f:
+                    f.write(yeni)
+                print(f"  ↻ {hedef.name} · hafiza haritasi tazelendi")
     else:
         print("✓ capture karari kaydedildi: durable bulgu yok")
 
@@ -656,6 +793,18 @@ def komut_doctor(args) -> int:
 
     kontrol((hafiza / "tasks" / "OPEN.md").is_file(), "tasks/OPEN.md var")
     kontrol((hafiza / "sessions" / "CURRENT.md").is_file(), "sessions/CURRENT.md var")
+
+    # Her-zaman-yuklu harita: hedef dosyalardaki blok bayatsa harness'siz araclar
+    # (Codex/Cursor) eski korpusu gorur. UYARI seviyesinde — cikis kodunu etkilemez.
+    if hafiza.is_dir():
+        govde = index_govde(veri, hafiza)
+        for hedef in _index_hedefleri(yol, veri):
+            if not hedef.is_file():
+                uyarilar.append(("uyari", str(hedef), "index hedefi yok"))
+            elif _blok_degistir(_oku_ham(hedef), govde) is None:
+                uyarilar.append(("uyari", hedef.name, "ctx:index isareti yok — blok kurulmamis"))
+            elif _blok_degistir(_oku_ham(hedef), govde) != _oku_ham(hedef):
+                uyarilar.append(("uyari", hedef.name, "index blogu bayat — `ctx index --yaz`"))
 
     # uyarilar cikis kodunu ETKILEMEZ — doctor'un yesil kalmasi gerekir
     if uyarilar:
@@ -736,6 +885,176 @@ def komut_init(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------- bootstrap
+
+HOOK_KAYITLARI = (
+    ("ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20),
+    ("ctx_index.py", "Hafiza haritasi yukleniyor...", 20),
+)
+
+
+def _claude_dizini() -> Path:
+    return Path.home() / ".claude"
+
+
+def hook_kur(yaz: bool = True) -> list[str]:
+    """SessionStart kancalarini yerlestirir ve settings.json'a KAYDEDER.
+
+    Iki sey ayri: dosyayi kopyalamak (kolay) ve harness'a tanitmak (asil is).
+    Ikincisi 2026-08-12'de elle yapildi; bu fonksiyon onu tekrarlanabilir kilar.
+
+    settings.json kullanicinin KENDI ayarlarini tasir → uzerine YAZILMAZ, yalniz
+    eksik kayit eklenir (idempotent: ikinci kosumda hicbir sey degismez).
+    """
+    rapor: list[str] = []
+    hedef_dizin = _claude_dizini() / "hooks"
+    kaynak_dizin = SABLON / "hooks"
+    if yaz:
+        hedef_dizin.mkdir(parents=True, exist_ok=True)
+
+    for ad, _mesaj, _sure in HOOK_KAYITLARI:
+        kaynak = kaynak_dizin / ad
+        hedef = hedef_dizin / ad
+        if not kaynak.is_file():
+            rapor.append(f"! sablon yok: {kaynak}")
+            continue
+        yeni = kaynak.read_text(encoding="utf-8")
+        if hedef.is_file() and hedef.read_text(encoding="utf-8") == yeni:
+            rapor.append(f"= {ad} (guncel)")
+            continue
+        if yaz:
+            hedef.write_text(yeni, encoding="utf-8")
+        rapor.append(f"+ {ad} ({'yazildi' if yaz else 'yazilacak'})")
+
+    ayar_yolu = _claude_dizini() / "settings.json"
+    try:
+        ayarlar = json.loads(ayar_yolu.read_text(encoding="utf-8")) if ayar_yolu.is_file() else {}
+    except (json.JSONDecodeError, OSError) as e:
+        rapor.append(f"! settings.json okunamadi ({e}) — hook KAYDEDILMEDI, elle ekleyin")
+        return rapor
+
+    kancalar = ayarlar.setdefault("hooks", {}).setdefault("SessionStart", [])
+    if not kancalar:
+        kancalar.append({"hooks": []})
+    liste = kancalar[0].setdefault("hooks", [])
+    mevcut = " ".join(str(k.get("command", "")) for k in liste)
+
+    eklendi = False
+    for ad, mesaj, sure in HOOK_KAYITLARI:
+        if ad in mevcut:
+            rapor.append(f"= settings.json: {ad} kayitli")
+            continue
+        liste.append({
+            "type": "command",
+            "command": f'python "{hedef_dizin / ad}"',
+            "shell": "bash",
+            "timeout": sure,
+            "statusMessage": mesaj,
+        })
+        eklendi = True
+        rapor.append(f"+ settings.json: {ad} eklendi")
+
+    if eklendi and yaz:
+        ayar_yolu.write_text(json.dumps(ayarlar, ensure_ascii=False, indent=2), encoding="utf-8")
+    return rapor
+
+
+def kalite_kapisi_kur(hafiza: Path, yaz: bool = True) -> list[str]:
+    """Hafiza reposuna pre-commit kalite kapisini takar (`core.hooksPath`).
+
+    Kanca dogrulama MANTIGI TASIMAZ; tek motor `ctx validate`'i cagirir.
+    """
+    rapor: list[str] = []
+    if not (hafiza / ".git").exists():
+        rapor.append("! hafiza bir git reposu degil — kalite kapisi atlandi")
+        return rapor
+
+    kanca_dizin = hafiza / ".githooks"
+    kaynak = SABLON / "hooks" / "pre-commit"
+    if not kaynak.is_file():
+        rapor.append("! pre-commit sablonu yok")
+        return rapor
+
+    hedef = kanca_dizin / "pre-commit"
+    yeni = kaynak.read_text(encoding="utf-8")
+    if hedef.is_file() and hedef.read_text(encoding="utf-8") == yeni:
+        rapor.append("= .githooks/pre-commit (guncel)")
+    else:
+        if yaz:
+            kanca_dizin.mkdir(parents=True, exist_ok=True)
+            hedef.write_text(yeni, encoding="utf-8")
+        rapor.append("+ .githooks/pre-commit")
+
+    mevcut_yol = _git(hafiza, "config", "--get", "core.hooksPath")
+    if mevcut_yol == ".githooks":
+        rapor.append("= core.hooksPath (.githooks)")
+    elif mevcut_yol:
+        rapor.append(f"! core.hooksPath baska bir degerde ({mevcut_yol}) — DOKUNULMADI")
+    else:
+        if yaz:
+            _git(hafiza, "config", "core.hooksPath", ".githooks")
+        rapor.append("+ core.hooksPath = .githooks")
+    return rapor
+
+
+def komut_bootstrap(args) -> int:
+    """Yeni projede tek komutla kurulum: hafiza + adapter + kancalar + kalite kapisi.
+
+    Tasarim sozu: IDEMPOTENT ve YIKICI DEGIL. Mevcut hicbir dosyanin uzerine
+    yazmaz (settings.json'a yalniz eksik kaydi ekler), ikinci kosumda ciktisi
+    "hepsi guncel" olur. --kuru ile hicbir sey yazmadan ne yapacagini gosterir.
+    """
+    yaz = not args.kuru
+    if args.kuru:
+        print("KURU KOSUM — hicbir dosya yazilmayacak\n")
+
+    kok = Path.cwd()
+    print(f"proje kokku: {kok}")
+
+    # 1) hafiza iskeleti + adapter dosyalari (mevcut init'i aynen kullanir)
+    print("\n[1/4] hafiza + adapter")
+    if yaz:
+        komut_init(args)
+    else:
+        mp = args.memory_path or f"../{args.proje}-memory"
+        print(f"  ctx init -> {(kok / mp).resolve()} + context.yaml + AGENTS.md + CLAUDE.md")
+
+    # 2) SessionStart kancalari (harita + capture karari)
+    print("\n[2/4] SessionStart kancalari")
+    for satir in hook_kur(yaz=yaz):
+        print("  ", satir)
+
+    # 3) hafiza reposunda kalite kapisi
+    print("\n[3/4] kalite kapisi (pre-commit)")
+    mp = args.memory_path or f"../{args.proje}-memory"
+    for satir in kalite_kapisi_kur((kok / mp).resolve(), yaz=yaz):
+        print("  ", satir)
+
+    # 4) harita blogunu yaz + saglik
+    print("\n[4/4] harita + saglik")
+    if args.kuru:
+        print("   (kuru kosum — index/doctor atlandi)")
+        return 0
+
+    class _Index:
+        repo = None
+        all = False
+        yaz = True
+        kontrol = False
+    # Bos korpusta bile blok YAZILIR: tuketici dosyalarda isaretler bastan dursun,
+    # ilk not eklendiginde tazeleme yapacak yer hazir olsun.
+    komut_index(_Index())
+
+    class _D:
+        repo = None
+    kod = komut_doctor(_D())
+
+    print("\nKALAN ELLE ADIM:")
+    print("  · hafiza reposu icin uzak depo (gh repo create <ad>-memory --private) — PII taramasi sonrasi")
+    print("  · `ctx` PATH'te degilse: bin/ dizinini PATH'e ekleyin")
+    return kod
+
+
 # ---------------------------------------------------------------- cli
 
 def main() -> int:
@@ -750,6 +1069,15 @@ def main() -> int:
     s.add_argument("--min", type=float, default=0.0,
                    help="bu puanin altindaki sonuclari gizle (varsayilan 0 = kapali)")
     s.set_defaults(fn=komut_search)
+
+    x = alt.add_parser("index", help="her-zaman-yuklu not haritasi (hook + AGENTS.md blogu)")
+    x.add_argument("--repo")
+    x.add_argument("--all", action="store_true", help="lifecycle filtresi uygulama")
+    x.add_argument("--yaz", action="store_true",
+                   help="hedef dosyalardaki ctx:index blogunu tazele (index_targets)")
+    x.add_argument("--kontrol", action="store_true",
+                   help="bloklar bayat mi? yazmaz; bayatsa cikis 1 (doctor/pre-commit icin)")
+    x.set_defaults(fn=komut_index)
 
     d = alt.add_parser("doctor", help="kurulum saglik kontrolu")
     d.add_argument("--repo")
@@ -777,6 +1105,16 @@ def main() -> int:
     i.add_argument("--role", default="current", choices=["current", "legacy"])
     i.add_argument("--components", default="app")
     i.set_defaults(fn=komut_init)
+
+    b = alt.add_parser("bootstrap",
+                       help="yeni projede TEK KOMUTLA kurulum (init + kancalar + kalite kapisi)")
+    b.add_argument("--proje", required=True)
+    b.add_argument("--memory-path", dest="memory_path")
+    b.add_argument("--role", default="current", choices=["current", "legacy"])
+    b.add_argument("--components", default="")
+    b.add_argument("--kuru", action="store_true",
+                   help="hicbir sey yazma, ne yapacagini goster")
+    b.set_defaults(fn=komut_bootstrap)
 
     args = ap.parse_args()
     return args.fn(args)

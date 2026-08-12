@@ -102,6 +102,57 @@ Göreve başlamadan **görev kavramları ve dosya yolları** ile ara (`ctx searc
 (`current` → product+current, `legacy` → product+legacy). Alt ajanlara ilgili notlar
 **prompt'a gömülerek** verilir; ajanın gönüllü aramasına güvenilmez.
 
+### Her-zaman-yüklü harita (index)
+
+Aramanın **tetikleyicisi yoktur**: 2026-08-12'de ölçüldü, 21 notluk korpus koca bir
+oturum boyunca hiç açılmadı çünkü ajan `ctx search` çalıştırmayı düşünmedi. Bu yüzden
+korpusun **haritası** (not başına tek satır: yol + `description`) her oturuma
+yüklenir. Harita notun kendisi değildir; ajan haritada isabet görünce **o notu açar**,
+"bütün korpusu yükleme" yasağı bozulmaz.
+
+Üretici tektir (`ctx index`), tüketici çoktur:
+
+| Araç | Nasıl okur | Tazelik |
+|---|---|---|
+| Claude Code | `SessionStart` hook `ctx index` çıktısını bağlama basar | her oturum, canlı |
+| Codex / Cursor / Copilot | `AGENTS.md` içindeki `ctx:index` bloğu | `ctx index --yaz` |
+| harness'sız / CI | `ctx index` çıktısını okur | anında |
+
+**Harness'a bağımlı olmayan yol daima dosyadır**; hook yalnızca kolaylıktır. Blok
+`<!-- ctx:index:basla -->` / `<!-- ctx:index:bitir -->` işaretleri arasında yaşar,
+hedefleri `context.yaml → index_targets` belirler (varsayılan `AGENTS.md`; Cursor
+kuralı veya `copilot-instructions.md` de hedef olabilir — işaretleri taşıyan her
+dosya tüketicidir).
+
+Bayatlık yapısal olarak kapatılır: `ctx close --not <yol>` yeni notu kaydettiği anda
+hedef blokları **tazeler**; `ctx index --kontrol` bayatsa 1 döner; `ctx doctor` bunu
+uyarı olarak gösterir. Yani "hook'u olan araç yeni notu görür, dosyadan okuyan araç
+görmez" ayrışması oluşamaz.
+
+## Kurulum
+
+Yeni bir projede sistem **tek komutla** kurulur (proje kökünde):
+
+```
+ctx bootstrap --proje <ad> [--role current|legacy] [--components "api,web"]
+ctx bootstrap --proje <ad> --kuru     # hiçbir şey yazmadan ne yapacağını göster
+```
+
+Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md,
+(2) `SessionStart` kancaları — dosyaya kopyalanır **ve** `settings.json`'a kaydedilir,
+(3) hafıza reposunda pre-commit kalite kapısı (`core.hooksPath .githooks`),
+(4) harita bloğu yazılır + `ctx doctor`.
+
+İki sert söz — ikisi de teste bağlıdır (`tests/test_bootstrap.py`):
+
+- **İdempotent:** ikinci koşum hiçbir şeyi değiştirmez.
+- **Yıkıcı değil:** `settings.json`'daki kullanıcı kancaları ve ilgisiz ayarlar
+  korunur; dosya okunamıyorsa **dokunulmaz**, elle ekleme talimatı verilir. Projenin
+  kendi `core.hooksPath` ayarı varsa ezilmez.
+
+Elle kalan tek adım bilinçlidir: **hafıza reposunun uzak deposu**. Push, PII taraması
+kapanmadan gündeme gelmez (bkz. üstteki sert kural) — bu yüzden otomatikleştirilmez.
+
 ## Adapter'lar
 
 Her repo kökünde iki dosya durur:

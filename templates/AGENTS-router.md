@@ -8,3 +8,7 @@ canonical DEĞİLDİR. Alt ajanlara ilgili notlar prompt'a gömülerek verilir �
 ajanın gönüllü aramasına güvenilmez.
 
 Hafıza canlı kodun yerine geçmez: `git log` ve `git diff` her ikisinden de otoriterdir.
+
+<!-- ctx:index:basla -->
+_(harita `ctx index --yaz` ile üretilir — bu satır ilk yazımda değişir)_
+<!-- ctx:index:bitir -->
