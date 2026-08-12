@@ -5,7 +5,7 @@ PyYAML bagimliligi YOKTUR.
 
 search/doctor SALT-OKUNUR. init hicbir mevcut dosyanin ustune YAZMAZ.
 
-Turkce: lower()/casefold() KULLANILMAZ — asagidaki INDIRME tablosu kullanilir.
+Arama normalizasyonu dile bagimli DEGIL: Unicode NFKD + casefold (bkz. indir()).
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import argparse
 import json
 import re
 import subprocess
+import unicodedata
 import sys
 from pathlib import Path
 
@@ -25,26 +26,76 @@ SABLON = KOK / "templates"
 
 GECERLI_LIFECYCLE = {"product", "current", "legacy", "historical"}
 FILTRE = {"current": {"product", "current"}, "legacy": {"product", "legacy"}}
-ATLA = {"tasks", "sessions", "gecis", ".git"}
+# Not SAYILMAYAN dizinler. Burada yalnizca SPEC'in tanimladigi YAPISAL olanlar
+# durur: `tasks/` ve `sessions/` DURUM tutar (durable bilgi degil), `.git` altyapi.
+# Projeye ozel dizinler buraya YAZILMAZ → hafiza deposunun kendi ayar dosyasina.
+ATLA = {"tasks", "sessions", ".git"}
 
-# Turkce-guvenli indirme: buyuk harf -> kucuk karsilik (I -> ı, İ -> i).
-INDIRME = str.maketrans(
-    "İIŞĞÜÖÇÂÎÛABCDEFGHJKLMNOPQRSTUVWXYZ",
-    "iışğüöçâîûabcdefghjklmnopqrstuvwxyz",
-)
+# Hafiza deposunun KENDI ayarlari (opsiyonel, deponun kokunde).
+#
+#   skip_dirs:    [gecis]      not sayilmayan ek dizinler
+#   pii_profiles: [tr]         ulkeye ozel PII desenleri (bkz. _PII_PROFILLERI)
+#   review_days:  90           `current` notun gozden gecirme araligi
+#   archive_index: gecis/legacy-index.md   devralinan, kanonik OLMAYAN indeks
+#
+# Neden tuketici repodaki context.yaml'da degil: bunlar HAFIZANIN ozellikleridir
+# (hangi klasor not degil, hangi ulkenin verisi tutuluyor). Ayrica pre-commit
+# kancasi hafiza deposunun icinden, manifest OLMADAN kosar — ayari orada bulmali.
+HAFIZA_AYAR = "ctx.yaml"
 
-# ARAMA KATLAMASI (yalniz arama icin, dil donusumu DEGIL): Turkce aksanli harfler ASCII
-# transliterasyonlarina indirilir (ı->i, ş->s, ğ->g, ü->u, ö->o, ç->c, â->a, î->i, û->u).
-# Gerekce: proje konvansiyonu — yollar/tanimlayicilar Turkce karaktersiz transliterasyonla
-# yazilir (CONVENTIONS.md: "hakedis", "hakediş" degil), yani Turkce sorgu bu katlama
-# olmadan dosya yoluna/tanimlayiciya HICBIR ZAMAN eslesemez. Arama normalizasyonu
-# aksan-duyarsizdir; metin uretiminde ASLA kullanilmaz.
-ARAMA_KATLAMA = str.maketrans("ışğüöçâîû", "isguocaiu")
+
+def hafiza_ayarlari(hafiza: Path) -> dict:
+    p = hafiza / HAFIZA_AYAR
+    if not p.is_file():
+        return {}
+    try:
+        return manifest_oku(p)
+    except OSError:
+        return {}
+
+
+def _liste(deger) -> list[str]:
+    """YAML ayrıştırıcısı listeyi list, tek degeri str dondurur — ikisini de kabul et."""
+    if isinstance(deger, list):
+        return [str(d).strip() for d in deger if str(d).strip()]
+    if isinstance(deger, str) and deger.strip():
+        return [deger.strip()]
+    return []
+
+# ARAMA NORMALIZASYONU — dile bagimli DEGIL, Unicode'un kendi kurallariyla.
+#
+# Iki ayri isi yapar; ikisi de yalniz ARAMA icindir, metin uretiminde ASLA kullanilmaz:
+#
+#   1) Aksan/isaret dusurme (NFKD + combining atma): "Ş"->"S", "é"->"e", "ü"->"u".
+#      Gerekce: yollar ve tanimlayicilar cogu projede ASCII transliterasyonla yazilir
+#      ("odeme", "ödeme" degil; "creche", "crèche" degil), yani aksanli sorgu bu
+#      katlama olmadan dosya yoluna HICBIR ZAMAN eslesemez.
+#   2) NFKD'nin AYRISTIRMADIGI harfler (asagidaki tablo): "ı", "ł", "ø", "ß"…
+#      Bunlarin ASCII karsiligi bir isaret degil, ayri bir harftir.
+#
+# Buyuk/kucuk katlama en SONA birakilir ve `casefold()` ile yapilir — cunku aksanlar
+# dustukten sonra "İ" zaten "I"dir ve Python'un "İ".lower() = "i" + U+0307 (combining
+# dot) tuzagi olusamaz. Onceki surum bunun icin Turkce'ye ozel bir tablo tasiyordu;
+# artik gerekmiyor, ve ayni kod Fransizca/Almanca/Ispanyolca/Lehce icin de calisiyor.
+_AYRISMAYAN = str.maketrans({
+    "ı": "i", "İ": "I",          # tr/az
+    "ł": "l", "Ł": "L",          # pl
+    "ø": "o", "Ø": "O",          # da/no
+    "đ": "d", "Đ": "D",          # hr/sr/vi
+    "ð": "d", "Ð": "D", "þ": "th", "Þ": "TH",   # is
+    "ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE",
+})
 
 
 def indir(metin: str) -> str:
-    """Karsilastirma icin normalize et. .lower() KULLANMA — Turkce'de yanlis uretir."""
-    return metin.translate(INDIRME).translate(ARAMA_KATLAMA)
+    """Karsilastirma icin normalize et: aksan dusur, ASCII'ye katla, kucult.
+
+    `.lower()` TEK BASINA KULLANILMAZ — "İ".lower() iki karakter (i + U+0307)
+    uretir ve arama sessizce eslesmez.
+    """
+    ayrik = unicodedata.normalize("NFKD", metin.translate(_AYRISMAYAN))
+    isaretsiz = "".join(c for c in ayrik if not unicodedata.combining(c))
+    return isaretsiz.casefold()
 
 
 # ---------------------------------------------------------------- manifest
@@ -119,10 +170,16 @@ def frontmatter(metin: str) -> dict:
     return alanlar
 
 
+def _atlanacaklar(hafiza: Path) -> set[str]:
+    """Yapisal ATLA + hafizanin kendi `skip_dirs` girisleri."""
+    return ATLA | {a.strip("/") for a in _liste(hafiza_ayarlari(hafiza).get("skip_dirs"))}
+
+
 def notlari_gez(hafiza: Path):
+    atla = _atlanacaklar(hafiza)
     for p in sorted(hafiza.rglob("*.md")):
         goreli = p.relative_to(hafiza)
-        if ATLA & set(goreli.parts):
+        if atla & set(goreli.parts):
             continue
         if goreli.parts[0] == "README.md" or len(goreli.parts) == 1:
             continue
@@ -154,8 +211,8 @@ KAPSAMA_TABANI = 0.4
 _KOD_PARCA_DESENI = re.compile(r"`([^`\n]+)`")
 
 # "yol" ikiye ayrilir: dosya adi koku (uzantisiz stem) sorgu kelimesine BIREBIR esitse
-# 100, kelime yolun herhangi bir yerinde (kismi) geciyorsa 70. Boylece "hakediş" sorgusu
-# domain/hakedis.md'yi (birebir stem esit) domain/fatura-hakedis.md'nin (kismi yol
+# 100, kelime yolun herhangi bir yerinde (kismi) geciyorsa 70. Boylece "billing" sorgusu
+# domain/billing.md'yi (birebir stem esit) domain/billing-webhooks.md'nin (kismi yol
 # eslesmesi) onune gecirir. Her giris: (goruntu adi, agirlik, mod) — mod "esit" ise
 # tam esitlik, "icerir" ise alt-dize arandigi anlamina gelir. Liste agirlik-azalan
 # sirada: sira ayni zamanda "en yuksek alan" aramasinda VE gerekce siralamasinda
@@ -190,7 +247,7 @@ def _kod_parca_mi(parca: str) -> bool:
 
     Kural: icinde bosluk YOKSA VE (. _ / \\ ( : - karakterlerinden biri VAR YA DA
     camelCase (kucuk harfi buyuk harf izliyor) VARSA -> kod sayilir. Aksi halde
-    (orn. `GELMEYEN HAKEDİŞLER.xlsx` — bosluklu; `Hakediş` — ozel karaktersiz +
+    (orn. `Aylik Rapor.xlsx` — bosluklu; `Fatura` — ozel karaktersiz +
     camelCase degil) normal govde metni sayilir.
     """
     if not parca or any(c.isspace() for c in parca):
@@ -318,9 +375,13 @@ def komut_search(args) -> int:
     if toplam == 0:
         print("(eslesme yok)")
 
-    # eski arsiv: HER ZAMAN kanonik notlardan sonra, ayri baslik, en fazla 5 satir.
-    eski = hafiza / "gecis" / "legacy-index.md"
-    if eski.is_file():
+    # ESKI ARSIV (opsiyonel): baska bir sistemden devralinmis, kanonik olmayan bir
+    # indeks dosyasi. Yolu context.yaml'daki `archive_index` belirler; tanimli
+    # degilse bu bolum HIC calismaz. Kanonik notlardan SONRA, ayri baslik altinda,
+    # en fazla 5 satir — devralinan kayit kanonik notla ayni gorunmemeli.
+    arsiv_yolu = veri.get("archive_index")
+    eski = (hafiza / str(arsiv_yolu)) if isinstance(arsiv_yolu, str) and arsiv_yolu else None
+    if eski is not None and eski.is_file():
         # kanonik tarafla ayni mantik: VEYA adaylik + eslesen kelime sayisina gore siralama
         eski_puanli = []
         for satir in eski.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -333,7 +394,7 @@ def komut_search(args) -> int:
         eski_puanli.sort(key=lambda t: (-t[0], not t[1]))
         eski_satirlar = [s for _, _, s in eski_puanli]
         if eski_satirlar:
-            print("\n--- eski arşiv (gecis/legacy-index.md) ---")
+            print(f"\n--- eski arşiv ({arsiv_yolu}) ---")
             for satir in eski_satirlar[:5]:
                 print(f"[eski arşiv] {satir[2:][:160]}")
             if len(eski_satirlar) > 5:
@@ -487,12 +548,38 @@ _WIKI_LINK = re.compile(r"\[\[([^\]|]+)")
 _SECRET_DESENI = re.compile(
     r"(?i)\b(api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*['\"]?([A-Za-z0-9+/=_.-]{16,})"
 )
-_PII_DESENLERI = [
-    ("TC kimlik gorunumlu 11 hane", re.compile(r"(?<!\d)[1-9]\d{10}(?!\d)")),
-    ("IBAN", re.compile(r"(?i)\bTR\d{2}[\s]?(?:\d{4}[\s]?){5}\d{2}\b")),
+# PII desenleri iki kumede: EVRENSEL olanlar her projede kosar; ULKEYE OZEL
+# olanlar yalnizca context.yaml'daki `pii_profiles` listesinde adi gecerse kosar
+# (orn. `pii_profiles: [tr]`). Gerekce: "11 haneli sayi" Turkiye'de kimlik
+# numarasidir ama baska bir projede sipariş/olcum numarasi olabilir — her yerde
+# kosarsa yanlis alarm uretir; hic kosmazsa gercek PII kacar.
+_PII_EVRENSEL = [
     ("e-posta", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
-    ("telefon", re.compile(r"(?<!\d)0?5\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}(?!\d)")),
+    ("IBAN", re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Za-z0-9]{4}){3,7}[ ]?[A-Za-z0-9]{1,4}\b")),
+    ("kredi karti gorunumlu 16 hane", re.compile(r"(?<!\d)(?:\d{4}[ -]?){3}\d{4}(?!\d)")),
 ]
+
+_PII_PROFILLERI = {
+    "tr": [
+        ("TC kimlik gorunumlu 11 hane", re.compile(r"(?<!\d)[1-9]\d{10}(?!\d)")),
+        ("telefon (TR cep)", re.compile(r"(?<!\d)0?5\d{2}[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}(?!\d)")),
+    ],
+    "us": [
+        ("SSN gorunumlu", re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")),
+        ("telefon (US)", re.compile(r"(?<!\d)\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)")),
+    ],
+    "de": [
+        ("Steuer-ID gorunumlu 11 hane", re.compile(r"(?<!\d)\d{11}(?!\d)")),
+    ],
+}
+
+
+def pii_desenleri(profiller=()) -> list:
+    """Evrensel desenler + istenen ulke profilleri."""
+    secili = list(_PII_EVRENSEL)
+    for ad in profiller or ():
+        secili += _PII_PROFILLERI.get(str(ad).strip().casefold(), [])
+    return secili
 
 
 def _bugun():
@@ -510,7 +597,17 @@ def _tarih_ayristir(s: str):
 
 
 def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
-    """(seviye, dosya, mesaj) listesi dondurur. seviye: 'hata' | 'uyari'."""
+    """(seviye, dosya, mesaj) listesi dondurur. seviye: 'hata' | 'uyari'.
+
+    Ulkeye ozel PII desenleri ve gozden gecirme araligi hafizanin kendi
+    `ctx.yaml`indan gelir (yoksa: yalniz evrensel desenler, 90 gun).
+    """
+    ayar = hafiza_ayarlari(hafiza)
+    desenler = pii_desenleri(_liste(ayar.get("pii_profiles")))
+    try:
+        review_gun = int(str(ayar.get("review_days") or REVIEW_GUN))
+    except ValueError:
+        review_gun = REVIEW_GUN
     bulgular: list[tuple[str, str, str]] = []
     notlar = list(notlari_gez(hafiza))
     stemler = {p.stem for p, _ in notlar}
@@ -565,7 +662,7 @@ def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
                 bulgular.append(("hata", yol, f"updated tarihi okunamadi: {fm.get('updated')!r}"))
             else:
                 gun = (_bugun() - t).days
-                if gun > REVIEW_GUN:
+                if gun > review_gun:
                     bulgular.append(("uyari", yol,
                                      f"review-due: {gun} gundur dogrulanmadi (stale DEGIL)"))
 
@@ -573,7 +670,7 @@ def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
             for m in _SECRET_DESENI.finditer(metin):
                 bulgular.append(("hata", yol,
                                  f"deger atanmis gizli anahtar gorunumu: {m.group(1)}=***"))
-            for ad, desen in _PII_DESENLERI:
+            for ad, desen in desenler:
                 if desen.search(metin):
                     bulgular.append(("hata", yol, f"olasi PII: {ad}"))
 

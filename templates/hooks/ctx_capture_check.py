@@ -48,7 +48,7 @@ def main():
                 "CAPTURE KARARI BEKLIYOR — onceki oturum kalici bulgu karari "
                 "verilmeden kapanmis:\n\n" + uyari + "\n\n"
                 "Bu oturumun SONUNDA karar ver: kalici bir bulgu varsa once "
-                "hafizaya yaz (yapit-memory/), sonra `ctx close --not <yol>`; "
+                "hafizaya yaz, sonra `ctx close --not <yol>`; "
                 "yoksa `ctx close --yok \"gerekce\"`. Karar VERMEMEK gecersizdir. "
                 "Kullaniciyi simdi bununla mesgul etme — kapanista hallet."
             ),

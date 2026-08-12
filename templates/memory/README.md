@@ -2,7 +2,7 @@
 
 Bu repo, {project} ürününün **harness-bağımsız kalıcı bilgi deposudur**. Ürünün bütün
 repoları bu hafızayı ortak kullanır. Bilgi Markdown + Git'te yaşar; Claude auto-memory,
-WrongStack SAGE ve benzeri harness hafızaları canonical DEĞİLDİR, yalnız
+ajanın/editörün gömülü hafızası canonical DEĞİLDİR, yalnız
 önbellek/adapter'dır. Standart: `~/.agent-context/SPEC.md`.
 
 🔴 **TALİMATSIZ COMMIT VE PUSH YASAK.** Kullanıcının açık talimatı olmadan hiçbir

@@ -47,8 +47,8 @@ def test_indir_turkce_ve_ascii_yazim_ayni_anahtara_duser(ctx_modul):
 
 def test_yol_govdeden_agir_basar(ctx_modul):
     fm = {"title": "T", "description": "D"}
-    yol_isabeti = puanla(ctx_modul, "domain/karot.md", fm, "alakasiz metin", "karot")
-    govde_isabeti = puanla(ctx_modul, "domain/baska.md", fm, "icinde karot gecen govde", "karot")
+    yol_isabeti = puanla(ctx_modul, "domain/billing.md", fm, "alakasiz metin", "billing")
+    govde_isabeti = puanla(ctx_modul, "domain/baska.md", fm, "icinde billing gecen govde", "billing")
     assert yol_isabeti[0] > govde_isabeti[0]
 
 
@@ -107,8 +107,8 @@ def test_tam_ifade_bonusu(ctx_modul):
 # ------------------------------------------------------------ gerekce
 
 def test_gerekce_en_agir_alani_once_yazar(ctx_modul):
-    sonuc = puanla(ctx_modul, "domain/karot.md", {"title": "karot", "description": "karot"},
-                   "karot", "karot")
+    sonuc = puanla(ctx_modul, "domain/billing.md", {"title": "billing", "description": "billing"},
+                   "billing", "billing")
     assert sonuc[1][0] in ("yol", "ifade")
 
 
@@ -128,5 +128,24 @@ def test_govde_ayir_frontmattersiz_metni_bozmaz(ctx_modul):
 def test_kod_parcalari_yalniz_kod_gorunumlu_olani_alir(ctx_modul):
     """Her backtick kod degildir; dogal dil parcasi kod sayilirsa agirlik 60
     yanlis nota gider."""
-    kod = ctx_modul._kod_parcalari("`app/belge/karot.py` ve `bir cumle daha uzun`")
-    assert "karot.py" in kod
+    kod = ctx_modul._kod_parcalari("`app/services/billing.py` ve `bir cumle daha uzun`")
+    assert "billing.py" in kod
+
+
+# ------------------------------------------------- dilden bagimsizlik
+
+def test_normalizasyon_diger_dillerde_de_calisir(ctx_modul):
+    """Arama normalizasyonu Unicode kurallariyla yapilir, dile ozel tabloyla
+    degil — bu yuzden tek bir dile bagli kalmaz."""
+    assert ctx_modul.indir("CRÈCHE") == "creche"          # fr
+    assert ctx_modul.indir("GRÜNDGENS") == "grundgens"    # de
+    assert ctx_modul.indir("MAÑANA") == "manana"          # es
+    assert ctx_modul.indir("ŁÓDŹ") == "lodz"              # pl
+    assert ctx_modul.indir("ØSTERGAARD") == "ostergaard"  # da
+    assert ctx_modul.indir("STRASSE") == ctx_modul.indir("STRAßE")  # de
+
+
+def test_aksanli_ve_ascii_yazim_ayni_anahtara_duser(ctx_modul):
+    for aksanli, ascii_ in [("şablon", "sablon"), ("crèche", "creche"),
+                            ("mañana", "manana"), ("Łódź", "lodz")]:
+        assert ctx_modul.indir(aksanli) == ctx_modul.indir(ascii_)

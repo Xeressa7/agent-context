@@ -3,7 +3,7 @@
 Bu belge, bir ürünün **harness-bağımsız kalıcı bilgi deposunun** nasıl kurulacağını
 tarif eder. Depo `<product>-memory` adlı bir Git reposudur; ürünün bütün repoları
 (`<repo>`) bu hafızayı ortak kullanır. Bilgi Markdown + Git'te yaşar; Claude
-auto-memory, WrongStack SAGE ve benzeri harness hafızaları canonical DEĞİLDİR,
+auto-memory gibi harness hafızaları canonical DEĞİLDİR,
 yalnız önbellek/adapter'dır.
 
 🔴 **TALİMATSIZ COMMIT VE PUSH YASAK.** Kullanıcının açık talimatı olmadan hiçbir
@@ -90,7 +90,7 @@ hiyerarşi değildir.
   kararı kullanıcınındır. "Acil" veya "bu zaten devamı" onay değildir.
 - **Sorunu çözen en az değişiklik.** İlgisiz refactor yok; ilgisiz ölü kod **söylenir, silinmez**.
 - **Kod hafızadan otoriterdir.** Dosya/fonksiyon/bayrak adı geçen her iddia kaynakta doğrulanır.
-- **PII ve secret commit edilmez.** İsim, TC, adres, telefon, vergi no; notlarda da gerçek isim
+- **PII ve secret commit edilmez.** İsim, kimlik/vergi numarası, adres, telefon; notlarda da gerçek isim
   değil "örnek mal sahibi" yazılır. Secret'ın varlığı kaydedilir, değeri kaydedilmez.
 - **Alt ajan raporu kanıt değildir**, kaynakta doğrulanacak girdidir.
 <!-- ctx:hard-rules:end -->
@@ -153,6 +153,34 @@ Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md,
 Elle kalan tek adım bilinçlidir: **hafıza reposunun uzak deposu**. Push, PII taraması
 kapanmadan gündeme gelmez (bkz. üstteki sert kural) — bu yüzden otomatikleştirilmez.
 
+## Hafızanın kendi ayarları — `<memory>/ctx.yaml`
+
+Standart hiçbir projeye özel varsayım taşımaz. Projeye özgü olan her şey, hafıza
+deposunun kökündeki **opsiyonel** `ctx.yaml` dosyasında yaşar:
+
+```yaml
+skip_dirs:     [gecis]                  # not sayılmayan ek dizinler
+archive_index: gecis/legacy-index.md    # devralınan, KANONİK OLMAYAN indeks
+pii_profiles:  [tr]                     # ülkeye özel PII desenleri (tr · us · de)
+review_days:   90                       # `current` notun gözden geçirme aralığı
+```
+
+Dosya yoksa güvenli varsayılanlar geçerlidir: yalnız `tasks/` + `sessions/` atlanır,
+yalnız **evrensel** PII desenleri (e-posta, IBAN, kart numarası) taranır, 90 gün.
+
+Neden tüketici repodaki `context.yaml`'da değil: bunlar **hafızanın** özellikleridir
+(hangi klasör not değil, hangi ülkenin verisi tutuluyor), tüketici reponun değil.
+Ayrıca pre-commit kancası hafıza deposunun içinden, manifest **olmadan** koşar.
+
+**Ülkeye özel PII bir profil arkasındadır**, çünkü desen her yerde doğru değildir:
+11 haneli sayı Türkiye'de kimlik numarasıdır, başka bir projede sipariş numarası —
+profilsiz koşarsa yanlış alarm üretir, hiç koşmazsa gerçek PII kaçar.
+
+**Arama normalizasyonu dile bağlı değildir:** Unicode NFKD + combining işaretlerin
+düşürülmesi + `casefold()`. Böylece `şablon`/`sablon`, `crèche`/`creche`,
+`Łódź`/`lodz` aynı anahtara düşer. `.lower()` tek başına **kullanılmaz** —
+`"İ".lower()` iki karakter (`i` + U+0307) üretir ve arama sessizce eşleşmez.
+
 ## Adapter'lar
 
 Her repo kökünde iki dosya durur:
@@ -163,5 +191,5 @@ Her repo kökünde iki dosya durur:
   repo için hangi filtrenin geçerli olduğu, korpusun topluca yüklenmeyeceği.
 
 `CLAUDE.md` yalnız `@AGENTS.md` satırını taşır (harness adapter'ı, içerik tutmaz).
-Harness-native hafızalar (Claude auto-memory, SAGE) canonical DEĞİLDİR; eski depolar
+Harness-native hafızalar canonical DEĞİLDİR; eski depolar
 READ-ONLY arşive dönüştürülür ve yeni durable kayıt almaz.

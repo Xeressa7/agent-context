@@ -85,11 +85,31 @@ def test_tam_bayragi_olmadan_pii_taranmaz(ctx_modul, hafiza, yaz):
     assert ctx_modul.dogrula(hafiza, tam=False) == []
 
 
-def test_tam_bayragi_ile_tc_no_yakalanir(ctx_modul, hafiza, yaz):
-    """pre-commit kancasi `--tam` ile kosar: PII'li commit DURDURULUR."""
+def test_tam_bayragi_ile_evrensel_pii_yakalanir(ctx_modul, hafiza, yaz):
+    """pre-commit kancasi `--tam` ile kosar: PII'li commit DURDURULUR.
+    E-posta her projede PII'dir — profil gerektirmez."""
+    yaz(hafiza, "domain/a.md", govde="Iletisim: ornek.kisi@ornek.com")
+    assert ctx_modul.dogrula(hafiza, tam=True), "evrensel PII taranmadi"
+
+
+def test_ulkeye_ozel_desen_PROFILSIZ_kosmaz(ctx_modul, hafiza, yaz):
+    """11 haneli sayi Turkiye'de kimlik no'dur ama baska projede siparis
+    numarasi olabilir — profil acilmadan yanlis alarm uretmemeli."""
+    yaz(hafiza, "domain/a.md", govde="Siparis numarasi 12345678901 olarak kayitli.")
+    assert ctx_modul.dogrula(hafiza, tam=True) == []
+
+
+def test_ulkeye_ozel_desen_PROFILLE_kosar(ctx_modul, hafiza, yaz):
+    (hafiza / "ctx.yaml").write_text("pii_profiles: [tr]\n", encoding="utf-8")
     yaz(hafiza, "domain/a.md", govde="TC: 12345678901")
     bulgular = ctx_modul.dogrula(hafiza, tam=True)
-    assert bulgular, "PII taranmadi"
+    assert any("TC kimlik" in m for _s, _y, m in bulgular)
+
+
+def test_bilinmeyen_profil_sessizce_yok_sayilir(ctx_modul, hafiza, yaz):
+    (hafiza / "ctx.yaml").write_text("pii_profiles: [olmayan_ulke]\n", encoding="utf-8")
+    yaz(hafiza, "domain/a.md", govde="duz metin")
+    assert ctx_modul.dogrula(hafiza, tam=True) == []
 
 
 def test_review_due_HATA_degil_UYARI(ctx_modul, hafiza, yaz):
@@ -107,3 +127,27 @@ def test_tasks_ve_sessions_dogrulamaya_girmez(ctx_modul, hafiza):
     """OPEN.md / CURRENT.md durable NOT degil, DURUM. Frontmatter'lari yok ve
     olmamali; dogrulama onlari gormemeli (ATLA kumesi)."""
     assert ctx_modul.dogrula(hafiza) == []
+
+
+# ------------------------------------------- hafizanin kendi ayar dosyasi
+
+def test_skip_dirs_ek_dizini_not_saymaz(ctx_modul, hafiza, yaz):
+    """Projeye ozel dizin adlari KODA gomulmez; hafiza kendi ayarinda soyler."""
+    yaz(hafiza, "gecis/devralinan.md", lifecycle="uydurma")  # gecerli olsa hata verirdi
+    assert any("lifecycle" in m for _s, _y, m in ctx_modul.dogrula(hafiza))
+
+    (hafiza / "ctx.yaml").write_text("skip_dirs: [gecis]\n", encoding="utf-8")
+    assert ctx_modul.dogrula(hafiza) == []
+
+
+def test_review_days_ayarlanabilir(ctx_modul, hafiza, yaz):
+    yaz(hafiza, "domain/a.md", updated="2026-07-01")   # ~43 gun once
+    assert ctx_modul.dogrula(hafiza) == [], "90 gun varsayilaniyla uyarmamali"
+
+    (hafiza / "ctx.yaml").write_text("review_days: 7\n", encoding="utf-8")
+    assert any("review-due" in m for _s, _y, m in ctx_modul.dogrula(hafiza))
+
+
+def test_ayar_dosyasi_yoksa_guvenli_varsayilan(ctx_modul, hafiza, yaz):
+    yaz(hafiza, "domain/a.md")
+    assert ctx_modul.dogrula(hafiza, tam=True) == []

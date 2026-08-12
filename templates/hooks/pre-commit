@@ -1,5 +1,5 @@
 #!/bin/sh
-# yapit-memory pre-commit — bilgi-kalitesi kapisi.
+# Hafiza deposu pre-commit — bilgi-kalitesi kapisi.
 #
 # Dogrulama mantigi BURADA YASAMAZ: tek motor `ctx validate`'tir; bu kanca
 # yalnizca onu cagirir. Ayni motoru `ctx doctor` da kullanir.
