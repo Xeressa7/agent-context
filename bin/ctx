@@ -1,0 +1,16 @@
+#!/bin/sh
+# ctx — agent context aracı (POSIX/Git Bash sarmalayıcısı)
+# Python yorumlayıcısını bulup ctx.py'yi çağırır; tüm argümanlar aynen aktarılır.
+DIR=$(dirname "$0")
+CTX_PY="$DIR/ctx.py"
+
+if command -v python >/dev/null 2>&1; then
+  exec python "$CTX_PY" "$@"
+elif command -v python3 >/dev/null 2>&1; then
+  exec python3 "$CTX_PY" "$@"
+elif command -v py >/dev/null 2>&1; then
+  exec py -3 "$CTX_PY" "$@"
+fi
+
+echo "HATA: Python bulunamadi (python/python3/py PATH'te olmali)." >&2
+exit 127

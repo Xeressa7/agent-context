@@ -1,0 +1,14 @@
+version: 1
+project: {project}
+memory_path: {memory_path}
+
+role: {role}
+components: [{components}]
+
+retrieval:
+  current: [product, current]
+  legacy: [product, legacy]
+
+write_policy: leader_only
+task_state: {memory_path}/tasks/OPEN.md
+session_state: {memory_path}/sessions/CURRENT.md
