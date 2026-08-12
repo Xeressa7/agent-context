@@ -30,8 +30,9 @@ def ctx_modul():
 
 
 def not_yaz(hafiza: Path, goreli: str, *, title=None, description="Aciklama",
-            lifecycle="current", type_="domain", tags=None, components=None,
-            updated="2026-08-13", superseded_by="null", govde="Govde metni."):
+            status="active", scope=None, lifecycle=None, type_="domain",
+            tags=None, components=None, updated="2026-08-13",
+            superseded_by="null", govde="Govde metni."):
     """Test notu olusturur. Frontmatter alanlari ctx'in bekledigi sirada."""
     p = hafiza / goreli
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -43,9 +44,16 @@ def not_yaz(hafiza: Path, goreli: str, *, title=None, description="Aciklama",
         "---",
         f"title: {title}",
         f'description: "{description}"',
-        f"lifecycle: {lifecycle}",
         f"type: {type_}",
     ]
+    # Eski tek-eksenli alan yalniz ACIKCA istendiginde yazilir (geriye
+    # uyumluluk testleri icin); varsayilan yeni modeldir.
+    if lifecycle is not None:
+        satirlar.append(f"lifecycle: {lifecycle}")
+    else:
+        satirlar.append(f"status: {status}")
+        if scope:
+            satirlar.append(f"scope: [{scope if isinstance(scope, str) else ', '.join(scope)}]")
     if tags:
         satirlar.append(f"tags: [{', '.join(tags)}]")
     if components:

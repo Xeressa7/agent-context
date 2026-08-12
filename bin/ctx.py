@@ -24,8 +24,33 @@ if hasattr(sys.stdout, "reconfigure"):
 KOK = Path(__file__).resolve().parent.parent  # ~/.agent-context
 SABLON = KOK / "templates"
 
-GECERLI_LIFECYCLE = {"product", "current", "legacy", "historical"}
-FILTRE = {"current": {"product", "current"}, "legacy": {"product", "legacy"}}
+# ---------------------------------------------------------------- taksonomi
+#
+# Notun gecerlilik alani IKI BAGIMSIZ eksenle tarif edilir:
+#
+#   status : active | archived     — bugunu tarif ediyor mu (varsayilan active)
+#   scope  : [etiket, ...]         — hangi baglamda gecerli; BOSSA EVRENSEL
+#
+# Onceki model tek eksenliydi (`lifecycle: product|current|legacy|historical`) ve
+# `current`/`legacy` ikiligi bu araci dogurun projenin kendi hikayesinden
+# geliyordu ("eski surum + yeni surum"). Tek cagli bir projede `legacy` olu bir
+# kavram, uc cagli bir projede yetersizdi. Iki eksende:
+#
+#   product    -> scope yok (evrensel), status active
+#   current    -> scope: [current]      \ etiketler artik PROJENIN sozluğu,
+#   legacy     -> scope: [legacy]       / koda gomulu sabit degil
+#   historical -> status: archived
+#
+# Bu esleme sayesinde eski notlar OLDUGU GIBI calisir (asagidaki _gecerlilik).
+GECERLI_STATUS = {"active", "archived"}
+
+# Geriye uyumluluk: eski tek-eksenli deger -> (status, scope)
+_ESKI_LIFECYCLE = {
+    "product":    ("active", []),
+    "historical": ("archived", []),
+    "current":    ("active", ["current"]),
+    "legacy":     ("active", ["legacy"]),
+}
 # Not SAYILMAYAN dizinler. Burada yalnizca SPEC'in tanimladigi YAPISAL olanlar
 # durur: `tasks/` ve `sessions/` DURUM tutar (durable bilgi degil), `.git` altyapi.
 # Projeye ozel dizinler buraya YAZILMAZ → hafiza deposunun kendi ayar dosyasina.
@@ -55,12 +80,20 @@ def hafiza_ayarlari(hafiza: Path) -> dict:
 
 
 def _liste(deger) -> list[str]:
-    """YAML ayrıştırıcısı listeyi list, tek degeri str dondurur — ikisini de kabul et."""
+    """Liste alanini normalize et.
+
+    Iki ayristirici iki bicim uretiyor: manifest_oku `[a, b]`yi gercek list,
+    frontmatter ise "a, b" string'i yapiyor. Virgulle bolmek ikisini de dogru
+    okur — aksi halde "server, worker" TEK etiket sanilir ve kapsam eslesmesi
+    sessizce basarisiz olur.
+    """
     if isinstance(deger, list):
-        return [str(d).strip() for d in deger if str(d).strip()]
-    if isinstance(deger, str) and deger.strip():
-        return [deger.strip()]
-    return []
+        parcalar = deger
+    elif isinstance(deger, str):
+        parcalar = deger.split(",")
+    else:
+        return []
+    return [str(d).strip() for d in parcalar if str(d).strip()]
 
 # ARAMA NORMALIZASYONU — dile bagimli DEGIL, Unicode'un kendi kurallariyla.
 #
@@ -168,6 +201,41 @@ def frontmatter(metin: str) -> dict:
             d = ", ".join(p.strip() for p in d[1:-1].split(","))
         alanlar[a.strip()] = d
     return alanlar
+
+
+def _gecerlilik(fm: dict) -> tuple[str, list[str]]:
+    """Notun (status, scope) ikilisi. Eski `lifecycle` alani varsa cevrilir."""
+    status = str(fm.get("status") or "").strip()
+    scope = _liste(fm.get("scope"))
+    if status or scope:
+        return (status or "active"), scope
+    eski = str(fm.get("lifecycle") or "").strip()
+    return _ESKI_LIFECYCLE.get(eski, ("active", []))
+
+
+def repo_kapsami(veri: dict) -> list[str]:
+    """Bu reponun kapsami: `scope`, yoksa eski `role` alanindan turetilir."""
+    kapsam = _liste(veri.get("scope"))
+    if kapsam:
+        return kapsam
+    rol = str(veri.get("role") or "").strip()
+    return [rol] if rol else []
+
+
+def gorunur(fm: dict, kapsam: list[str], arsiv: bool = False) -> bool:
+    """Not bu kapsamda okunmali mi?
+
+    Kural iki cumle: (1) arsivlenmis not istenmedikce gelmez; (2) scope'u
+    olmayan not EVRENSELDIR (her kapsamda gecerli), scope'u olan yalnizca
+    kesisme varsa gelir. Kapsam tanimsizsa filtre uygulanmaz — tek cagli
+    projede kimse scope yazmak zorunda kalmasin.
+    """
+    status, not_kapsami = _gecerlilik(fm)
+    if status == "archived" and not arsiv:
+        return False
+    if not not_kapsami or not kapsam:
+        return True
+    return bool(set(not_kapsami) & set(kapsam))
 
 
 def _atlanacaklar(hafiza: Path) -> set[str]:
@@ -332,8 +400,7 @@ def _not_puanla(goreli: Path, fm: dict, metin: str, kelimeler: list[str], ifade:
 
 def komut_search(args) -> int:
     _, veri, hafiza = baglam_yukle(args.repo)
-    rol = veri.get("role", "current")
-    izin = None if args.all else FILTRE.get(rol, FILTRE["current"])
+    kapsam = repo_kapsami(veri)
 
     kelimeler = [indir(k) for k in args.sorgu.split() if k.strip()]
     if not kelimeler:
@@ -347,9 +414,10 @@ def komut_search(args) -> int:
     for p, goreli in notlari_gez(hafiza):
         metin = p.read_text(encoding="utf-8", errors="replace")
         fm = frontmatter(metin)
-        lc = fm.get("lifecycle", "")
-        if izin is not None and lc not in izin:
+        if not args.all and not gorunur(fm, kapsam):
             continue
+        status, not_kapsami = _gecerlilik(fm)
+        lc = ",".join(not_kapsami) or ("arsiv" if status == "archived" else "evrensel")
         sonuc = _not_puanla(goreli, fm, metin, kelimeler, ifade)
         if sonuc is None:
             continue
@@ -437,14 +505,13 @@ def _kisalt(metin: str, sinir: int = INDEX_ACIKLAMA_SINIRI) -> str:
 def index_govde(veri: dict, hafiza: Path, tum: bool = False) -> str:
     """Rol filtresine gore not haritasi (markdown). Deterministik: notlari_gez
     yol sirali, klasor sirasi sabit."""
-    rol = str(veri.get("role", "current"))
-    izin = None if tum else FILTRE.get(rol, FILTRE["current"])
+    kapsam = repo_kapsami(veri)
 
     gruplar: dict[str, list[str]] = {}
     sayi = 0
     for p, goreli in notlari_gez(hafiza):
         fm = frontmatter(p.read_text(encoding="utf-8", errors="replace"))
-        if izin is not None and fm.get("lifecycle", "") not in izin:
+        if not tum and not gorunur(fm, kapsam):
             continue
         grup, ad = goreli.parts[0], "/".join(goreli.parts[1:])
         gruplar.setdefault(grup, []).append(f"- `{ad}` — {_kisalt(fm.get('description', ''))}")
@@ -452,7 +519,8 @@ def index_govde(veri: dict, hafiza: Path, tum: bool = False) -> str:
 
     hafiza_adi = Path(str(veri.get("memory_path", hafiza))).name
     satirlar = [
-        f"### Hafıza haritası — {hafiza_adi} · rol: {rol} · {sayi} not",
+        f"### Hafıza haritası — {hafiza_adi} · kapsam: "
+        f"{', '.join(kapsam) if kapsam else 'tümü'} · {sayi} not",
         "",
         "Bu bir **harita**, notun kendisi değil: ilgili satırı görünce **o notu aç**. "
         'Hedefli arama `ctx search "<sorgu>"`; bütün korpusu topluca yükleme.',
@@ -537,7 +605,7 @@ def komut_index(args) -> int:
 # Seviye ayrimi onemli: 90 gunluk not STALE DEGILDIR, yalnizca REVIEW-DUE'dur.
 # Gercek stale tespiti makine-dogrulanabilir anchor'larla yapilir (henuz yok).
 
-ZORUNLU_ALANLAR = ("title", "description", "lifecycle", "type", "updated")
+ZORUNLU_ALANLAR = ("title", "description", "type", "updated")
 REVIEW_GUN = 90
 
 _MD_LINK = re.compile(r"\[[^\]]*\]\(([^)#]+?)(?:#[^)]*)?\)")
@@ -675,9 +743,20 @@ def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
             bulgular.append(("hata", yol, "frontmatter yok ya da ayristirilamadi"))
             continue
 
-        lc = fm.get("lifecycle", "")
-        if lc not in GECERLI_LIFECYCLE:
-            bulgular.append(("hata", yol, f"gecersiz lifecycle: {lc!r}"))
+        # Gecerlilik ekseni: yeni `status`/`scope` ya da eski `lifecycle`.
+        # Ikisi de yoksa not evrensel+aktif sayilir — tek cagli projede kimse
+        # kapsam yazmak zorunda degil.
+        eski_lc = str(fm.get("lifecycle") or "").strip()
+        if eski_lc and eski_lc not in _ESKI_LIFECYCLE:
+            bulgular.append(("hata", yol, f"gecersiz lifecycle: {eski_lc!r}"))
+        elif eski_lc:
+            bulgular.append(("uyari", yol,
+                             f"`lifecycle: {eski_lc}` eskidi → `ctx migrate` "
+                             "(status/scope ikilisine cevirir)"))
+        status = str(fm.get("status") or "").strip()
+        if status and status not in GECERLI_STATUS:
+            bulgular.append(("hata", yol, f"gecersiz status: {status!r} "
+                                          f"(gecerli: {', '.join(sorted(GECERLI_STATUS))})"))
         for alan in ZORUNLU_ALANLAR:
             if not fm.get(alan):
                 bulgular.append(("hata", yol, f"zorunlu alan eksik: {alan}"))
@@ -709,7 +788,11 @@ def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
                                  f"cozumlenmeyen wiki-link: [[{ad.strip()}]] "
                                  f"(eski arsive isaret ediyor olabilir)"))
 
-        if lc == "current":
+        # review-due YALNIZ aktif notlar icin. Onceki model bunu sadece
+        # `lifecycle: current`e uyguluyordu; iki eksenli modelde "bugunu tarif
+        # eden her not" dogal karsiligi — arsivlenmis not zaten bugunu tarif
+        # etmedigini soyluyor, ona bayatlik sormak anlamsiz.
+        if _gecerlilik(fm)[0] == "active":
             t = _tarih_ayristir(fm.get("updated", ""))
             if t is None:
                 bulgular.append(("hata", yol, f"updated tarihi okunamadi: {fm.get('updated')!r}"))
@@ -1048,6 +1131,63 @@ def komut_init(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- migrate
+
+def komut_migrate(args) -> int:
+    """Eski tek-eksenli `lifecycle` alanini `status` + `scope` ikilisine cevirir.
+
+    Satir bazli, yerinde: frontmatter'in geri kalanina ve govdeye DOKUNMAZ.
+    `--kuru` ile yalniz ne yapacagini gosterir.
+    """
+    _, _veri, hafiza = baglam_yukle(args.repo)
+    yaz = not args.kuru
+    degisen = atlanan = 0
+
+    for p, goreli in notlari_gez(hafiza):
+        metin = p.read_text(encoding="utf-8")
+        fm = frontmatter(metin)
+        eski = str(fm.get("lifecycle") or "").strip()
+        if not eski:
+            atlanan += 1
+            continue
+        if eski not in _ESKI_LIFECYCLE:
+            print(f"  ! {goreli.as_posix()} · bilinmeyen lifecycle: {eski!r} — ATLANDI")
+            atlanan += 1
+            continue
+
+        status, kapsam = _ESKI_LIFECYCLE[eski]
+        yeni_satirlar = [f"status: {status}"]
+        if kapsam:
+            yeni_satirlar.append(f"scope: [{', '.join(kapsam)}]")
+
+        cikti, degisti = [], False
+        for satir in metin.splitlines():
+            if not degisti and satir.strip().startswith("lifecycle:"):
+                cikti.extend(yeni_satirlar)
+                degisti = True
+            else:
+                cikti.append(satir)
+        if not degisti:
+            atlanan += 1
+            continue
+
+        print(f"  {goreli.as_posix()} · lifecycle: {eski} → "
+              f"status: {status}" + (f" · scope: [{', '.join(kapsam)}]" if kapsam else " (evrensel)"))
+        if yaz:
+            son = "\n".join(cikti)
+            if metin.endswith("\n"):
+                son += "\n"
+            p.write_text(son, encoding="utf-8")
+        degisen += 1
+
+    print(f"\n{degisen} not cevrildi, {atlanan} atlandi"
+          + (" (KURU KOSUM — dosya yazilmadi)" if args.kuru else ""))
+    if degisen and yaz:
+        print("Not: tuketici repolarin context.yaml'inda `role:` yerine `scope:` "
+              "kullanabilirsiniz (role hala okunuyor).")
+    return 0
+
+
 # ---------------------------------------------------------- bootstrap
 
 HOOK_KAYITLARI = (
@@ -1268,6 +1408,11 @@ def main() -> int:
     i.add_argument("--role", default="current", choices=["current", "legacy"])
     i.add_argument("--components", default="app")
     i.set_defaults(fn=komut_init)
+
+    mg = alt.add_parser("migrate", help="eski `lifecycle` alanini status+scope'a cevir")
+    mg.add_argument("--repo")
+    mg.add_argument("--kuru", action="store_true", help="hicbir sey yazma, ne yapacagini goster")
+    mg.set_defaults(fn=komut_migrate)
 
     b = alt.add_parser("bootstrap",
                        help="yeni projede TEK KOMUTLA kurulum (init + kancalar + kalite kapisi)")

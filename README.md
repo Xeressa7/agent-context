@@ -34,10 +34,11 @@ mevcut kancaların, ilgisiz ayarların ve projenin kendi `core.hooksPath`'inin
 
 | Komut | Ne yapar |
 |---|---|
-| `ctx search "<sorgu>"` | Role göre filtreli arama; alan ağırlıklı, aksan-duyarsız |
+| `ctx search "<sorgu>"` | Kapsama göre filtreli arama; alan ağırlıklı, aksan-duyarsız |
 | `ctx index [--yaz]` | Her-zaman-yüklü not haritası (hook + `AGENTS.md` bloğu) |
 | `ctx validate [--tam]` | Not kalitesi; `--tam` ile PII/secret taraması |
 | `ctx close --not <yol>` / `--yok "<gerekçe>"` | Oturumu capture kararıyla kapatır |
+| `ctx migrate` | Eski `lifecycle` alanını `status` + `scope`'a çevirir |
 | `ctx doctor` | Kurulum sağlığı |
 | `ctx init` / `ctx bootstrap` | Yeni proje kurulumu |
 
@@ -93,8 +94,6 @@ implementasyonu aynı sözleşmeye karşı doğrulanacak.
 
 - Harita **O(N)** büyür (~115 karakter/not): ~150–200 nota kadar rahat, ötesinde
   hiyerarşik harita gerekir.
-- `lifecycle` taksonomisi iki-çağ (`current`/`legacy`) varsayımı taşır; tek veya
-  üç çağlı projeler için `status` + `scope` ayrımına geçilecek.
 - `bootstrap` kancaları yalnız Claude Code'a kurar; diğer araçlar dosyadan okur
   (`AGENTS.md` bloğu) ama otomatik kurulumları yoktur.
 - Çok yazarlı/ekip senaryosu tanımsız.

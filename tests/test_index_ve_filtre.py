@@ -12,34 +12,85 @@ def veri(role="current"):
     return {"project": "test", "role": role, "memory_path": "./test-memory"}
 
 
-# ------------------------------------------------------------- FILTRE
+# ------------------------------------------------- KAPSAM (status + scope)
+#
+# Iki bagimsiz eksen: `status` (active|archived) ve `scope` (etiket listesi).
+# scope BOSSA not evrenseldir. Eski tek-eksenli `lifecycle` alani okunmaya
+# devam eder ve ayni davranisi uretir — bu testler ikisini de kilitler.
 
-def test_filtre_tanimi_iki_rolu_kapsar(ctx_modul):
-    assert ctx_modul.FILTRE["current"] == {"product", "current"}
-    assert ctx_modul.FILTRE["legacy"] == {"product", "legacy"}
-
-
-def test_product_her_iki_rolde_de_gorunur(ctx_modul):
-    """Teknoloji-bagimsiz urun gercegi cagdan bagimsizdir — iki filtrede de var."""
-    assert "product" in ctx_modul.FILTRE["current"]
-    assert "product" in ctx_modul.FILTRE["legacy"]
-
-
-def test_legacy_current_rolunde_gorunmez(ctx_modul):
-    assert "legacy" not in ctx_modul.FILTRE["current"]
-    assert "current" not in ctx_modul.FILTRE["legacy"]
+def test_scopesuz_not_her_kapsamda_gorunur(ctx_modul):
+    """Evrensel bilgi (dis sistem davranisi, mevzuat) caga bagli degildir."""
+    fm = {"status": "active"}
+    assert ctx_modul.gorunur(fm, ["v2"])
+    assert ctx_modul.gorunur(fm, ["v1"])
+    assert ctx_modul.gorunur(fm, [])
 
 
-def test_historical_varsayilan_filtrelerin_DISINDA(ctx_modul):
-    """`historical` bugunu tarif etmez: istenmeden yuklenmez (--all ile gelir)."""
-    assert "historical" not in ctx_modul.FILTRE["current"]
-    assert "historical" not in ctx_modul.FILTRE["legacy"]
+def test_scope_kesismezse_gorunmez(ctx_modul):
+    fm = {"scope": "v1"}
+    assert not ctx_modul.gorunur(fm, ["v2"])
+    assert ctx_modul.gorunur(fm, ["v1"])
+
+
+def test_coklu_scope_kesisme_yeterlidir(ctx_modul):
+    fm = {"scope": "server, worker"}
+    assert ctx_modul.gorunur(fm, ["worker", "cli"])
+    assert not ctx_modul.gorunur(fm, ["web"])
+
+
+def test_arsivlenmis_not_varsayilan_GELMEZ(ctx_modul):
+    fm = {"status": "archived"}
+    assert not ctx_modul.gorunur(fm, ["v2"])
+    assert ctx_modul.gorunur(fm, ["v2"], arsiv=True)
+
+
+def test_kapsam_tanimsizsa_filtre_UYGULANMAZ(ctx_modul):
+    """Tek cagli projede kimse scope yazmak zorunda kalmasin."""
+    assert ctx_modul.gorunur({"scope": "v1"}, [])
+
+
+# --------------------------------------- eski `lifecycle` geriye uyumlulugu
+
+def test_eski_product_evrensel_olur(ctx_modul):
+    assert ctx_modul._gecerlilik({"lifecycle": "product"}) == ("active", [])
+    assert ctx_modul.gorunur({"lifecycle": "product"}, ["legacy"])
+
+
+def test_eski_current_ve_legacy_scope_etiketine_doner(ctx_modul):
+    assert ctx_modul._gecerlilik({"lifecycle": "current"}) == ("active", ["current"])
+    assert ctx_modul._gecerlilik({"lifecycle": "legacy"}) == ("active", ["legacy"])
+    # eski davranis birebir korunur
+    assert not ctx_modul.gorunur({"lifecycle": "legacy"}, ["current"])
+    assert not ctx_modul.gorunur({"lifecycle": "current"}, ["legacy"])
+
+
+def test_eski_historical_arsive_doner(ctx_modul):
+    assert ctx_modul._gecerlilik({"lifecycle": "historical"}) == ("archived", [])
+    assert not ctx_modul.gorunur({"lifecycle": "historical"}, ["current"])
+
+
+def test_yeni_alanlar_eskisini_EZER(ctx_modul):
+    fm = {"lifecycle": "legacy", "scope": "v2"}
+    assert ctx_modul._gecerlilik(fm) == ("active", ["v2"])
+
+
+# ------------------------------------------------- repo kapsami (context.yaml)
+
+def test_repo_kapsami_scope_alanindan(ctx_modul):
+    assert ctx_modul.repo_kapsami({"scope": ["server", "web"]}) == ["server", "web"]
+
+
+def test_repo_kapsami_eski_role_alanindan_turetilir(ctx_modul):
+    """Mevcut kurulumlar `role: current` tasiyor — bozulmamali."""
+    assert ctx_modul.repo_kapsami({"role": "current"}) == ["current"]
+    assert ctx_modul.repo_kapsami({}) == []
 
 
 def test_state_klasorleri_taranmaz(ctx_modul, hafiza, yaz):
     """tasks/ ve sessions/ DURUM tutar, durable bilgi degil — gezinmeye girmez."""
     yaz(hafiza, "domain/gercek.md")
-    (hafiza / "tasks" / "OPEN.md").write_text("---\ntitle: sahte\n---\n", encoding="utf-8")
+    (hafiza / "tasks" / "OPEN.md").write_text(
+        "---\ntitle: sahte\n---\n", encoding="utf-8")
     yollar = [g.as_posix() for _p, g in ctx_modul.notlari_gez(hafiza)]
     assert "domain/gercek.md" in yollar
     assert not any(y.startswith(("tasks/", "sessions/")) for y in yollar)

@@ -2,7 +2,7 @@ version: 1
 project: {project}
 memory_path: {memory_path}
 
-role: {role}
+scope: [{role}]
 components: [{components}]
 
 retrieval:

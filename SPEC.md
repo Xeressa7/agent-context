@@ -11,17 +11,36 @@ repoda (hafıza reposu dahil) commit atılmaz — dosyalar hazırlanır, `git st
 gösterilir, karar kullanıcınındır. Remote push ayrıca PII taraması kapanmadan
 gündeme bile gelmez.
 
-## Lifecycle sınıfları
+## Geçerlilik: iki bağımsız eksen
 
-| lifecycle | anlamı | kim okur |
+| alan | değerler | anlamı |
 |---|---|---|
-| `product` | teknoloji-bağımsız ürün/domain gerçeği (dış sistem davranışı, iş kuralı, mevzuat) | herkes |
-| `current` | bugünkü mimariye ait karar/bilgi | güncel repolar |
-| `legacy` | yalnız eski/bakım modundaki repo için geçerli implementasyon bilgisi | eski ağaç bakımı |
-| `historical` | bugünü tarif etmeyen ama karar/hata geçmişi için değerli kayıt | ihtiyaç hâlinde |
+| `status` | `active` · `archived` | Not bugünü tarif ediyor mu (varsayılan `active`) |
+| `scope` | serbest etiket listesi | Hangi bağlamda geçerli. **Boşsa evrensel** |
 
-Varsayılan retrieval filtresi: güncel repolarda `product + current`,
-eski ağaçta `product + legacy`. **Bütün korpus asla topluca okunmaz.**
+`scope` etiketleri **projenin kendi sözlüğüdür**, araca gömülü değildir: tek çağlı
+bir proje hiç `scope` yazmaz ve her not evrensel olur; çok çağlı bir proje
+`[v1]`/`[v2]` ya da `[server]`/`[mobile]` gibi kendi etiketlerini kullanır.
+
+Bir repo kendi kapsamını `context.yaml → scope` ile bildirir. Getirme kuralı iki
+cümle: **arşivlenmiş not istenmedikçe gelmez; `scope`'u olmayan not her kapsamda
+geçerlidir, `scope`'u olan yalnız kesişme varsa gelir.** Repo kapsamı tanımsızsa
+filtre uygulanmaz. **Bütün korpus asla topluca okunmaz.**
+
+### Eski `lifecycle` alanı
+
+Önceki sürüm tek eksenliydi (`product|current|legacy|historical`) ve
+`current`/`legacy` ikiliği bu aracı doğuran projenin kendi hikâyesinden
+geliyordu. Eski notlar okunmaya devam eder; karşılıkları:
+
+| eski | yeni |
+|---|---|
+| `product` | `status: active`, scope yok (evrensel) |
+| `current` | `status: active`, `scope: [current]` |
+| `legacy` | `status: active`, `scope: [legacy]` |
+| `historical` | `status: archived` |
+
+Dönüştürmek için: `ctx migrate` (`--kuru` ile önce göster).
 
 ## Not formatı (frontmatter standardı)
 
@@ -29,7 +48,8 @@ eski ağaçta `product + legacy`. **Bütün korpus asla topluca okunmaz.**
 ---
 title: Kısa başlık
 description: Tek cümlelik özet (arama bununla çalışır)
-lifecycle: product | current | legacy | historical
+status: active | archived         # varsayılan active
+scope: [v2, server]               # opsiyonel; boş = evrensel
 type: domain | architecture | decision | pitfall | reference
 tags: [etiket1, etiket2]
 components: [server, client]      # opsiyonel
@@ -45,8 +65,8 @@ superseded_by: null               # yerine geçen not varsa göreli yolu
 - `architecture/` — güncel mimari sınırlar (current)
 - `decisions/` — verilmiş kararlar ve gerekçeleri
 - `pitfalls/` — pahalıya mal olmuş dersler
-- `legacy/<repo>/` — yalnız eski ağaç için geçerli bilgi
-- `historical/` — geçmiş deney/postmortem
+- `legacy/<repo>/` — dar kapsamlı bilgi (örn. `scope: [legacy]`)
+- `historical/` — `status: archived` kayıtlar (geçmiş deney/postmortem)
 - `tasks/OPEN.md` — TÜM açık işlerin tek adresi (durable memory DEĞİL)
 - `sessions/CURRENT.md` — son 1-2 çalışma turu (durable memory DEĞİL)
 
@@ -98,8 +118,8 @@ hiyerarşi değildir.
 ## Retrieval
 
 Göreve başlamadan **görev kavramları ve dosya yolları** ile ara (`ctx search`, yoksa
-`rg`); isabet eden 1-3 notu oku. Bütün korpusu asla yükleme — filtre `role`'den gelir
-(`current` → product+current, `legacy` → product+legacy). Alt ajanlara ilgili notlar
+`rg`); isabet eden 1-3 notu oku. Bütün korpusu asla yükleme — filtre reponun
+`scope`'undan gelir. Alt ajanlara ilgili notlar
 **prompt'a gömülerek** verilir; ajanın gönüllü aramasına güvenilmez.
 
 ### Her-zaman-yüklü harita (index)
@@ -134,7 +154,7 @@ görmez" ayrışması oluşamaz.
 Yeni bir projede sistem **tek komutla** kurulur (proje kökünde):
 
 ```
-ctx bootstrap --proje <ad> [--role current|legacy] [--components "api,web"]
+ctx bootstrap --proje <ad> [--role <kapsam-etiketi>] [--components "api,web"]
 ctx bootstrap --proje <ad> --kuru     # hiçbir şey yazmadan ne yapacağını göster
 ```
 
@@ -185,8 +205,9 @@ düşürülmesi + `casefold()`. Böylece `şablon`/`sablon`, `crèche`/`creche`,
 
 Her repo kökünde iki dosya durur:
 
-- `context.yaml` — hafızanın yeri (`memory_path`), bu reponun `role`'ü ve
-  `components`'ı, retrieval filtreleri, `write_policy`, task/session dosyalarının yolu.
+- `context.yaml` — hafızanın yeri (`memory_path`), bu reponun `scope`'u ve
+  `components`'ı, `write_policy`, task/session dosyalarının yolu. (Eski `role`
+  alanı hâlâ okunur ve tek elemanlı kapsam olarak yorumlanır.)
 - `AGENTS.md` — içinde bir **router bloğu**: canonical hafızanın nerede olduğu, bu
   repo için hangi filtrenin geçerli olduğu, korpusun topluca yüklenmeyeceği.
 
