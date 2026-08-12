@@ -459,7 +459,18 @@ def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
 
 
 def komut_validate(args) -> int:
-    _, _, hafiza = baglam_yukle(args.repo)
+    # Hafiza reposunun KENDISINDE context.yaml yoktur (manifest tuketici repolarda
+    # yasar), bu yuzden pre-commit gibi cagiranlar icin dogrudan yol verilebilir.
+    if args.memory:
+        hafiza = Path(args.memory).resolve()
+        if not hafiza.is_dir():
+            print(f"HATA: --memory dizini yok: {hafiza}")
+            return 2
+        if not (hafiza / "README.md").is_file():
+            print(f"HATA: {hafiza} bir hafiza deposuna benzemiyor (README.md yok).")
+            return 2
+    else:
+        _, _, hafiza = baglam_yukle(args.repo)
     bulgular = dogrula(hafiza, tam=args.tam)
     hatalar = [b for b in bulgular if b[0] == "hata"]
     uyarilar = [b for b in bulgular if b[0] == "uyari"]
@@ -619,6 +630,7 @@ def main() -> int:
 
     v = alt.add_parser("validate", help="not kalitesi dogrulamasi (doctor + pre-commit ayni motoru kullanir)")
     v.add_argument("--repo")
+    v.add_argument("--memory", help="hafiza deposunun yolu (manifest aramayi atlar; pre-commit icin)")
     v.add_argument("--tam", action="store_true", help="PII/secret taramasini da kos (pahali)")
     v.set_defaults(fn=komut_validate)
 
