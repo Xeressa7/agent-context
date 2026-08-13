@@ -12,7 +12,12 @@
     {"text": "govde, frontmatter yok", "expect": {},
      "why": "frontmatter yoksa bos dict"},
     {"text": "---\ntitle: acik kalan\n", "expect": {},
-     "why": "kapanmamis frontmatter ayristirilmaz"}
+     "why": "kapanmamis frontmatter ayristirilmaz"},
+    {"text": "---\ntitle: 'tek tirnak'\n---\n", "expect": {"title": "tek tirnak"},
+     "why": "tek tirnak da soyulur — 2026-08-13 mutasyon turu bu vakanin YOKLUGUNU yakaladi: soyma satiri silinince hicbir test kirilmiyordu"},
+    {"text": "---\ntitle: Ana\n  girintili: deger\n- liste ogesi: x\n---\n",
+     "expect": {"title": "Ana"},
+     "why": "girintili ve tire ile baslayan satirlar duz sozlesmeye ait degil, ATLANIR"}
   ],
   "list": [
     {"input": "a, b", "expect": ["a", "b"], "why": "BUG (0.6.0): virgullu string bolunmezse 'a, b' TEK etiket sanilir"},

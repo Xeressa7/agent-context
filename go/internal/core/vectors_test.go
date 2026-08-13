@@ -189,6 +189,35 @@ func TestScoringVectors(t *testing.T) {
 	}
 }
 
+func TestFrontMatterParseVectors(t *testing.T) {
+	var v struct {
+		Parse []struct {
+			Text   string            `json:"text"`
+			Expect map[string]string `json:"expect"`
+			Why    string            `json:"why"`
+		} `json:"parse"`
+	}
+	load(t, "frontmatter.json", &v)
+
+	if len(v.Parse) == 0 {
+		t.Fatal("no parse cases loaded")
+	}
+	for _, c := range v.Parse {
+		got := ParseFrontMatter(c.Text)
+		if len(got) != len(c.Expect) {
+			t.Errorf("ParseFrontMatter(%q) = %v, want %v\n  why: %s",
+				c.Text, got, c.Expect, c.Why)
+			continue
+		}
+		for k, want := range c.Expect {
+			if got[k] != want {
+				t.Errorf("ParseFrontMatter(%q)[%q] = %q, want %q\n  why: %s",
+					c.Text, k, got[k], want, c.Why)
+			}
+		}
+	}
+}
+
 func TestListVectors(t *testing.T) {
 	var v struct {
 		List []struct {

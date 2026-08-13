@@ -87,3 +87,15 @@ func Visible(fm map[string]string, repoScope []string, includeArchived bool) boo
 	}
 	return false
 }
+
+// LegacyLifecycle reports whether a retired lifecycle value is one this tool
+// ever defined, so validation can tell "misspelled" from "outdated".
+func LegacyLifecycle(value string) (string, bool) {
+	mapped, ok := legacyLifecycle[strings.TrimSpace(value)]
+	return mapped.status, ok
+}
+
+// LegacyScope returns the scope tags a retired lifecycle value maps to.
+func LegacyScope(value string) []string {
+	return legacyLifecycle[strings.TrimSpace(value)].scope
+}

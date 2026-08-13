@@ -11,24 +11,18 @@
 # Kurulum: git config core.hooksPath .githooks
 # Atlatma (bilerek): git commit --no-verify
 
-CTX_PY="$HOME/.agent-context/bin/ctx.py"
+# Aracin KENDISI cagrilir, implementasyonu DEGIL: `bin/ctx` sarmalayicisi once
+# derlenmis binary'yi, yoksa Python'u secer. Boylece bu kanca, Go gecisi
+# bitip Python emekliye ayrildiginda degismek zorunda kalmaz.
+CTX="$HOME/.agent-context/bin/ctx"
 
-if [ ! -f "$CTX_PY" ]; then
-  echo "pre-commit: ctx bulunamadi ($CTX_PY) — dogrulama ATLANDI." >&2
-  exit 0
-fi
-
-if command -v python >/dev/null 2>&1; then
-  PY=python
-elif command -v python3 >/dev/null 2>&1; then
-  PY=python3
-else
-  echo "pre-commit: Python bulunamadi — dogrulama ATLANDI." >&2
+if [ ! -x "$CTX" ] && [ ! -f "$CTX" ]; then
+  echo "pre-commit: ctx bulunamadi ($CTX) — dogrulama ATLANDI." >&2
   exit 0
 fi
 
 echo "pre-commit: ctx validate --tam koşuyor..."
-if ! "$PY" "$CTX_PY" validate --tam --memory "$(git rev-parse --show-toplevel)"; then
+if ! sh "$CTX" validate --tam --memory "$(git rev-parse --show-toplevel)"; then
   echo "" >&2
   echo "pre-commit: HATA bulundu, commit durduruldu." >&2
   echo "  Duzelt ve tekrar dene; bilerek atlamak icin: git commit --no-verify" >&2

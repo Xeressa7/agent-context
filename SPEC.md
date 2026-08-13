@@ -149,6 +149,13 @@ hedef blokları **tazeler**; `ctx index --kontrol` bayatsa 1 döner; `ctx doctor
 uyarı olarak gösterir. Yani "hook'u olan araç yeni notu görür, dosyadan okuyan araç
 görmez" ayrışması oluşamaz.
 
+Tazeleme **bütün tüketicileri** kapsar, yalnız bulunulan repoyu değil: bir hafızayı
+birden çok repo okur ve yeni not hepsinin bloğunu aynı anda bayatlatır. Liste
+hafızanın kendi `ctx.yaml`'ındadır (`consumers:`) — "beni kimler okuyor" hafızanın
+özelliğidir. Her tüketici KENDİ manifest'iyle hesaplanır; kapsam filtresi repodan
+repoya değişir. (2026-08-13'e kadar söz repo başına geçerliydi ve ölçüldü ki iki repo
+dokuz gün geride kalmıştı.)
+
 ## Kurulum
 
 Yeni bir projede sistem **tek komutla** kurulur (proje kökünde):
@@ -159,7 +166,8 @@ ctx bootstrap --proje <ad> --kuru     # hiçbir şey yazmadan ne yapacağını g
 ```
 
 Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md,
-(2) `SessionStart` kancaları — dosyaya kopyalanır **ve** `settings.json`'a kaydedilir,
+(2) `SessionStart` kancaları `settings.json`'a kaydedilir — kancalar **aracın içindedir**
+(`ctx hook index` · `ctx hook capture-check`), ayrı script dosyası kopyalanmaz,
 (3) hafıza reposunda pre-commit kalite kapısı (`core.hooksPath .githooks`),
 (4) harita bloğu yazılır + `ctx doctor`.
 

@@ -4,6 +4,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Go
+# Go — derlenmis binary (kaynak repoda, artifact degil)
 go/ctx
 go/ctx.exe
+bin/ctx.exe
+bin/ctx.bin

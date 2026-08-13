@@ -1,0 +1,14 @@
+# Bu depoda satır sonu LF'tir — hem çalışma ağacında hem depoda.
+#
+# Neden açıkça yazıldı: makinede `core.autocrlf=true` ayarlı ve git, checkout
+# sırasında (ör. `git stash pop`) dosyaları sessizce CRLF'e çeviriyordu.
+# 2026-08-13'te bu, `gofmt`in iki Go dosyasını "biçimsiz" saymasına yol açtı.
+# Daha kötüsü: bu depo Python ve Go çıktılarını BAYT BAYT karşılaştırıyor —
+# satır sonunu ortama bırakmak, karşılaştırmanın zeminini kaydırır.
+#
+# `ctx index --yaz`ın hedef dosyanın kendi satır sonunu KORUMASI ayrı bir
+# konudur ve öyle kalmalı: orada tüketici reponun biçimine uyulur.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary

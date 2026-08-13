@@ -6,6 +6,7 @@ Onemli ayrim: 'hata' cikis kodunu etkiler, 'uyari' etkilemez. review-due
 bilerek UYARIDIR — 90 gununu doldurmus not "yanlis" degildir, bakilmasi
 gerekendir.
 """
+import os
 
 
 def seviyeler(bulgular):
@@ -183,3 +184,73 @@ def test_luhn_ve_mod97_dogrudan(ctx_modul):
     assert not ctx_modul._luhn_gecerli("2024202520262027")
     assert ctx_modul._iban_gecerli("TR330006100519786457841326")
     assert not ctx_modul._iban_gecerli("AB12CDEF1234GHIJ5678")
+
+
+def test_doctor_yapisal_hata_varken_cokmez(ctx_modul, hafiza, yaz, tmp_path, capsys):
+    """REGRESYON: `ctx doctor` bulgu yazdirdiktan sonra manifest yolunu kaybediyordu.
+
+    `for _, yol, mesaj in hatalar` dongusu, manifest'in Path'ini tutan `yol`
+    degiskeninin ustune yaziyordu; asagidaki `_index_hedefleri(yol, ...)` cagrisi
+    bir str alip AttributeError ile coküyordu. Temiz korpusta HIC gorunmez —
+    yalnizca hafizada en az bir YAPISAL HATA varken tetiklenir.
+    """
+    (hafiza / "domain" / "bozuk.md").write_text("frontmatter yok\n", encoding="utf-8")
+    yaz(hafiza, "domain/saglam.md")
+
+    proje = tmp_path / "proje"
+    proje.mkdir()
+    (proje / "context.yaml").write_text(
+        f"version: 1\nproject: t\nmemory_path: {hafiza.as_posix()}\nrole: current\n",
+        encoding="utf-8")
+
+    class _Args:
+        repo = str(proje)
+
+    kod = ctx_modul.komut_doctor(_Args())  # cokmemeli
+    cikti = capsys.readouterr().out
+    assert kod == 1                        # yapisal hata cikis kodunu ETKILER
+    assert "bozuk.md" in cikti
+    assert "index hedefi yok" in cikti     # manifest yolu hala Path: blok kontrolu kostu
+
+
+def test_bayat_binary_uyarisi(ctx_modul, tmp_path, monkeypatch):
+    """Sarmalayici binary'yi SESSIZCE tercih eder → bayatlik gorunmez bir arizadir.
+
+    Kaynagi degistirip yeniden derlemeyi unutan herkes eski kodu kosturur ve
+    cikti "dogru" gorunur; yalnizca YANLIS SURUMDUR. Tek gorunur yer doctor.
+    """
+    kok = tmp_path / ".agent-context"
+    (kok / "bin").mkdir(parents=True)
+    (kok / "go").mkdir()
+    (kok / "templates").mkdir()
+    monkeypatch.setattr(ctx_modul.Path, "home", staticmethod(lambda: tmp_path))
+
+    # binary yok → bayatlik kavrami da yok
+    (kok / "bin" / "ctx.py").write_text("x\n", encoding="utf-8")
+    assert ctx_modul._binary_tazeligi() == []
+
+    # binary kaynaktan YENI → sessiz
+    binary = kok / "bin" / "ctx.exe"
+    binary.write_bytes(b"binary")
+    os.utime(binary, (2_000_000_000, 2_000_000_000))
+    os.utime(kok / "bin" / "ctx.py", (1_000_000_000, 1_000_000_000))
+    assert ctx_modul._binary_tazeligi() == []
+
+    # kaynak binary'den yeni → UYARI
+    os.utime(kok / "bin" / "ctx.py", (2_100_000_000, 2_100_000_000))
+    uyari = ctx_modul._binary_tazeligi()
+    assert len(uyari) == 1 and "BAYAT" in uyari[0] and "ctx.py" in uyari[0]
+
+    # gomulu SABLON degisikligi de bayatlatir (binary sablonlari tasiyor)
+    os.utime(kok / "bin" / "ctx.py", (1_000_000_000, 1_000_000_000))
+    sablon = kok / "templates" / "CLAUDE.md"
+    sablon.write_text("y\n", encoding="utf-8")
+    os.utime(sablon, (2_100_000_000, 2_100_000_000))
+    assert any("templates/CLAUDE.md" in s for s in ctx_modul._binary_tazeligi())
+
+    # test dosyalari SAYILMAZ: binary'ye girmezler
+    os.utime(sablon, (1_000_000_000, 1_000_000_000))
+    test_go = kok / "go" / "bir_test.go"
+    test_go.write_text("package x\n", encoding="utf-8")
+    os.utime(test_go, (2_100_000_000, 2_100_000_000))
+    assert ctx_modul._binary_tazeligi() == []

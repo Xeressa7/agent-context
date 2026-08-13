@@ -1,16 +1,31 @@
 #!/bin/sh
 # ctx — agent context aracı (POSIX/Git Bash sarmalayıcısı)
-# Python yorumlayıcısını bulup ctx.py'yi çağırır; tüm argümanlar aynen aktarılır.
+#
+# Tek giriş noktası: çağıran taraf hangi implementasyonun koştuğunu BİLMEZ.
+# Kancalar, pre-commit ve settings.json hep bu dosyayı çağırır; Go geçişi
+# bittiğinde ya da bir makinede binary derlenmemişken hiçbiri değişmez.
+#
+# Sıra: derlenmiş binary → Python. Binary varsa o kazanır (hızlı, bağımsız).
 DIR=$(dirname "$0")
-CTX_PY="$DIR/ctx.py"
 
-if command -v python >/dev/null 2>&1; then
-  exec python "$CTX_PY" "$@"
-elif command -v python3 >/dev/null 2>&1; then
-  exec python3 "$CTX_PY" "$@"
-elif command -v py >/dev/null 2>&1; then
-  exec py -3 "$CTX_PY" "$@"
+for aday in "$DIR/ctx.exe" "$DIR/ctx.bin"; do
+  if [ -x "$aday" ]; then
+    exec "$aday" "$@"
+  fi
+done
+
+CTX_PY="$DIR/ctx.py"
+if [ -f "$CTX_PY" ]; then
+  if command -v python >/dev/null 2>&1; then
+    exec python "$CTX_PY" "$@"
+  elif command -v python3 >/dev/null 2>&1; then
+    exec python3 "$CTX_PY" "$@"
+  elif command -v py >/dev/null 2>&1; then
+    exec py -3 "$CTX_PY" "$@"
+  fi
+  echo "HATA: Python bulunamadi ve derlenmis ctx yok." >&2
+  exit 127
 fi
 
-echo "HATA: Python bulunamadi (python/python3/py PATH'te olmali)." >&2
+echo "HATA: ctx bulunamadi ($DIR icinde ne binary ne ctx.py var)." >&2
 exit 127

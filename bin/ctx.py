@@ -560,35 +560,101 @@ def _oku_ham(yol: Path) -> str:
         return f.read()
 
 
-def komut_index(args) -> int:
-    manifest, veri, hafiza = baglam_yukle(args.repo)
-    govde = index_govde(veri, hafiza, tum=args.all)
+def tuketici_manifestleri(hafiza: Path, mevcut: Path) -> list[Path]:
+    """Bu hafizayi okuyan BUTUN repolarin manifest yollari (mevcut olan dahil).
 
-    if not (args.yaz or args.kontrol):
-        print(govde)
+    Neden gerekli: bir hafiza, COK tuketici. Tazeleme yalnizca bulunulan reponun
+    hedeflerine yazsaydi -- ki 2026-08-13'e kadar oyleydi -- digerleri sessizce
+    kayardi. Olculdu: `yapit-server` ve `yapit-client` bloklari, iki notun
+    aciklamasi degistikten 9 gun sonra hala eskisini gosteriyordu; o repolarda
+    calisan harness'siz araclar bayat korpus okuyordu. SPEC "bayatlik yapisal
+    olarak kapatilir" diyor, ama soz repo BASINA gecerliydi.
+
+    Liste hafizanin kendi `ctx.yaml`'indadir (`consumers:`), cunku "beni kimler
+    okuyor" hafizanin ozelligidir; tek tuketici yoksa alan bos birakilir.
+    """
+    yollar = [mevcut.resolve()]
+    for ham in _liste(hafiza_ayarlari(hafiza).get("consumers")):
+        aday = (hafiza / ham).resolve() / "context.yaml"
+        if aday.is_file() and aday not in yollar:
+            yollar.append(aday)
+    return yollar
+
+
+def _kisa_hedef(hedef: Path) -> str:
+    """Hedefi reposuyla adlandirir: dort tuketici de duz 'AGENTS.md' yazmasin."""
+    return f"{hedef.parent.name}/{hedef.name}"
+
+
+def _haritalari_tazele(manifest: Path) -> list[str]:
+    """Tek tuketicinin bloklarini SESSIZCE tazeler; yazilanlarin adini dondurur."""
+    veri = manifest_oku(manifest)
+    mp = veri.get("memory_path")
+    if not isinstance(mp, str):
+        return []
+    hafiza = (manifest.parent / mp).resolve()
+    govde = index_govde(veri, hafiza)
+    yazilan = []
+    for hedef in _index_hedefleri(manifest, veri):
+        if not hedef.is_file():
+            continue
+        metin = _oku_ham(hedef)
+        yeni = _blok_degistir(metin, govde)
+        if yeni is not None and yeni != metin:
+            with open(hedef, "w", encoding="utf-8", newline="") as f:
+                f.write(yeni)
+            yazilan.append(_kisa_hedef(hedef))
+    return yazilan
+
+
+def _tuketiciyi_isle(manifest: Path, yaz: bool, tum: bool, cikti) -> int:
+    """Tek bir tuketicinin index bloklarini kontrol eder / tazeler.
+
+    Her tuketici KENDI manifest'iyle hesaplanir: kapsam filtresi repodan repoya
+    degisir (legacy reposu legacy notlarini gorur, current repo gormez).
+    Sorunlu hedef sayisini dondurur.
+    """
+    veri = manifest_oku(manifest)
+    mp = veri.get("memory_path")
+    if not isinstance(mp, str):
         return 0
+    hafiza = (manifest.parent / mp).resolve()
+    govde = index_govde(veri, hafiza, tum=tum)
 
     sorunlu = 0
     for hedef in _index_hedefleri(manifest, veri):
         if not hedef.is_file():
-            print(f"✗ {hedef} · dosya yok")
+            cikti(f"✗ {hedef} · dosya yok")
             sorunlu += 1
             continue
         metin = _oku_ham(hedef)
-        yeni = _blok_degistir(metin, govde)
-        if yeni is None:
-            print(f"✗ {hedef} · ctx:index isareti yok — hedef dosyaya su iki satiri "
+        guncellenmis = _blok_degistir(metin, govde)
+        if guncellenmis is None:
+            cikti(f"✗ {hedef} · ctx:index isareti yok — hedef dosyaya su iki satiri "
                   f"komsu satirlarda ekle:\n    {INDEX_BAS}\n    {INDEX_SON}")
             sorunlu += 1
-        elif yeni == metin:
-            print(f"✓ {hedef.name} · guncel")
-        elif args.kontrol:
-            print(f"⚠ {hedef} · index blogu BAYAT — `ctx index --yaz`")
+        elif guncellenmis == metin:
+            cikti(f"✓ {_kisa_hedef(hedef)} · guncel")
+        elif not yaz:
+            cikti(f"⚠ {hedef} · index blogu BAYAT — `ctx index --yaz`")
             sorunlu += 1
         else:
             with open(hedef, "w", encoding="utf-8", newline="") as f:
-                f.write(yeni)
-            print(f"✓ {hedef} · yazildi")
+                f.write(guncellenmis)
+            cikti(f"✓ {hedef} · yazildi")
+    return sorunlu
+
+
+def komut_index(args) -> int:
+    manifest, veri, hafiza = baglam_yukle(args.repo)
+
+    if not (args.yaz or args.kontrol):
+        print(index_govde(veri, hafiza, tum=args.all))
+        return 0
+
+    sorunlu = 0
+    for m in tuketici_manifestleri(hafiza, manifest):
+        sorunlu += _tuketiciyi_isle(m, yaz=args.yaz, tum=args.all, cikti=print)
     return 1 if sorunlu else 0
 
 
@@ -884,15 +950,51 @@ def _git(repo: Path, *arg) -> str:
         return ""
 
 
-def _calisma_durumu(repo: Path) -> dict:
-    """Bulunulan repodaki 'anlamli is' sinyalleri. Kirli dosya varsa is yapilmistir."""
-    kok = _git(repo, "rev-parse", "--show-toplevel") or str(repo)
+def _icinde_mi(alt: Path, ust: Path) -> bool:
+    try:
+        alt.resolve().relative_to(ust.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _repo_durumu(repo: Path) -> tuple[str, int]:
+    """Tek bir git reposunun (HEAD, kirli dosya sayisi) ikilisi."""
     kirli = [s for s in _git(repo, "status", "--porcelain").splitlines() if s.strip()]
-    return {
-        "repo": Path(kok).name,
-        "head": _git(repo, "rev-parse", "--short", "HEAD"),
-        "kirli": len(kirli),
-    }
+    return _git(repo, "rev-parse", "--short", "HEAD"), len(kirli)
+
+
+def _calisma_durumu(repo: Path, sinir: Path | None = None) -> dict:
+    """Bulunulan yerdeki 'anlamli is' sinyalleri. Kirli dosya varsa is yapilmistir.
+
+    SINIR manifest'in dizinidir ve git aramasi ONU ASLA ASMAZ. Olculdu
+    (2026-08-13): `yapit/` catisi bir git reposu DEGIL, dolayisiyla
+    `rev-parse --show-toplevel` yukari tirmanip kullanicinin EV DIZININI repo
+    saniyordu — "repo: onur5 · HEAD: ? · degisik dosya: 63". Kayitlar da ayni
+    ada dustugu icin `--kontrol` her seferinde "guncel" deyip susuyordu: sistemin
+    butun disiplini olan kapi, oturumlarin basladigi yerde KAPALIYDI.
+
+    Cati bir repo degilse altindaki repolar TOPLANIR. Boylece kapi cok repolu
+    duzende de calisir; HEAD parmak izi alt repolarin HEAD'lerinden turetilir ki
+    herhangi birindeki commit kapiyi yeniden kursun.
+    """
+    kok_str = _git(repo, "rev-parse", "--show-toplevel")
+    kok = Path(kok_str) if kok_str else None
+
+    if kok is not None and (sinir is None or kok.resolve() == sinir.resolve()
+                            or _icinde_mi(kok, sinir)):
+        head, kirli = _repo_durumu(kok)
+        return {"repo": kok.name, "head": head, "kirli": kirli}
+
+    if sinir is None:
+        return {"repo": repo.name, "head": "", "kirli": 0}
+
+    parcalar, toplam = [], 0
+    for d in sorted(p for p in sinir.iterdir() if (p / ".git").exists()):
+        head, kirli = _repo_durumu(d)
+        parcalar.append(f"{d.name}@{head or '?'}")
+        toplam += kirli
+    return {"repo": sinir.name, "head": ",".join(parcalar), "kirli": toplam}
 
 
 def _log_satirlari(hafiza: Path) -> list[dict]:
@@ -916,8 +1018,9 @@ def komut_close(args) -> int:
     import json
     from datetime import datetime
 
-    _, _, hafiza = baglam_yukle(args.repo)
-    durum = _calisma_durumu(Path(args.repo) if args.repo else Path.cwd())
+    manifest, _, hafiza = baglam_yukle(args.repo)
+    # Sinir manifest'in dizinidir: git aramasi projeden disari cikamaz.
+    durum = _calisma_durumu(Path(args.repo) if args.repo else Path.cwd(), manifest.parent)
     log_yolu = hafiza / KAPANIS_LOG
 
     if args.kontrol:
@@ -976,17 +1079,14 @@ def komut_close(args) -> int:
         # disipline birakmak, tam da bu sistemin bir kez batirdigi sey: hook'u olan
         # arac (Claude Code) haritayi canli uretir ama Codex/Cursor dosyadan okur ve
         # yeni notu HIC gormezdi. Kapanisin dogal parcasi olarak burada tazelenir.
-        manifest, veri, _ = baglam_yukle(args.repo)
-        govde = index_govde(veri, hafiza)
-        for hedef in _index_hedefleri(manifest, veri):
-            if not hedef.is_file():
-                continue
-            metin = _oku_ham(hedef)
-            yeni = _blok_degistir(metin, govde)
-            if yeni is not None and yeni != metin:
-                with open(hedef, "w", encoding="utf-8", newline="") as f:
-                    f.write(yeni)
-                print(f"  ↻ {hedef.name} · hafiza haritasi tazelendi")
+        # BUTUN tuketiciler, yalnizca bu repo degil: yeni not hepsinin blogunu
+        # ayni anda bayatlatir ve `ctx close`u kostugun repo ozel degildir.
+        # Yalnizca mevcut repoyu tazelemek, iki reponun dokuz gun geride
+        # kalmasina yol acan seydi.
+        manifest, _veri, _ = baglam_yukle(args.repo)
+        for m in tuketici_manifestleri(hafiza, manifest):
+            for ad in _haritalari_tazele(m):
+                print(f"  ↻ {ad} · hafiza haritasi tazelendi")
     else:
         print("✓ capture karari kaydedildi: durable bulgu yok")
 
@@ -997,7 +1097,146 @@ def komut_close(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- hook
+#
+# SessionStart kancalari ARACIN KENDISINDE. Onceden `templates/hooks/*.py`
+# altinda ayri script'lerdi ve her biri ince bir sarmalayiciydi: bir ctx komutu
+# kos, ciktisini harness'in JSON zarfina koy, her hatada sessizce cik. Aracin
+# icine alinca hem tek kaynak olur hem de kurulumun ayri dosyalara bagimliligi
+# biter (Go binary'si de ayni komutu tasiyor).
+#
+# ILK KURAL SESSIZLIK: bu kod HER oturum baslangicinda kosar. Bir kez cop
+# basarsa, biri fark edene kadar butun oturumlari kirletir. Bu yuzden her hata
+# yolu sessizce 0 ile doner — hafiza yok, manifest yok, korpus okunmuyor: hepsi
+# sessiz.
+
+def _hook_zarf(icerik: str) -> str:
+    """Harness'in bekledigi SessionStart zarfi."""
+    return json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": icerik,
+        }
+    })
+
+
+def _hook_index(args) -> int:
+    yol = manifest_bul(Path(args.repo) if args.repo else Path.cwd())
+    if yol is None:
+        return 0
+    veri = manifest_oku(yol)
+    mp = veri.get("memory_path")
+    if not isinstance(mp, str):
+        return 0
+    hafiza = (yol.parent / mp).resolve()
+    if not hafiza.is_dir():
+        return 0
+
+    harita = index_govde(veri, hafiza).strip()
+    if not harita:
+        return 0
+
+    print(_hook_zarf(
+        "KANONIK HAFIZA HARITASI (her oturumda otomatik yuklenir — "
+        "harness auto-memory'si DEGIL, `context.yaml -> memory_path`):\n\n"
+        + harita
+        + "\n\nKullanim: gorevin konusu yukaridaki bir satirla ortusuyorsa O NOTU AC "
+          "(tam metin orada; bu yalniz harita). Ortusme belirsizse "
+          '`ctx search "<sorgu>"`. Butun korpusu topluca yukleme. '
+          "Hafiza canli kodun yerine gecmez: `git log`/`git diff` otoriterdir."))
+    return 0
+
+
+def _hook_capture_check(args) -> int:
+    import contextlib
+    import io
+
+    class _K:
+        repo = args.repo
+        kontrol = True
+        yok = False
+        not_ = None
+
+    # Kullanicinin kosacagi KOMUTUN KENDISI cagrilir; boylece kanca, haber
+    # verdigi komuttan hicbir zaman ayrisamaz.
+    tampon = io.StringIO()
+    with contextlib.redirect_stdout(tampon):
+        kod = komut_close(_K())
+    # 0 = karar guncel · 2 = bu projede hafiza yok → ikisinde de sessiz
+    if kod != 1:
+        return 0
+    uyari = tampon.getvalue().strip()
+    if not uyari:
+        return 0
+
+    print(_hook_zarf(
+        "CAPTURE KARARI BEKLIYOR — onceki oturum kalici bulgu karari "
+        "verilmeden kapanmis:\n\n" + uyari + "\n\n"
+        "Bu oturumun SONUNDA karar ver: kalici bir bulgu varsa once "
+        "hafizaya yaz, sonra `ctx close --not <yol>`; "
+        "yoksa `ctx close --yok \"gerekce\"`. Karar VERMEMEK gecersizdir. "
+        "Kullaniciyi simdi bununla mesgul etme — kapanista hallet."))
+    return 0
+
+
+def komut_hook(args) -> int:
+    try:
+        if args.ad == "index":
+            return _hook_index(args)
+        return _hook_capture_check(args)
+    except (Exception, SystemExit):
+        # Kanca ASLA oturumu bozmaz. `SystemExit` ayrica yakalanir cunku
+        # `Exception`in altinda DEGILDIR: `baglam_yukle` hafiza kurulu olmayan
+        # projede SystemExit(2) firlatir ve bu, kancanin cikis kodu olarak
+        # disari sizardi — harness acisindan "kanca patladi" demek.
+        return 0
+
+
 # ---------------------------------------------------------------- doctor
+
+def _binary_tazeligi() -> list[str]:
+    """Derlenmis ctx, kaynagindan eski mi?
+
+    Sarmalayici (`bin/ctx`) binary varsa onu SESSIZCE secer. Bu, kurulumun en
+    sessiz ariza bicimini dogurur: kaynagi degistirir, yeniden derlemeyi
+    unutursun, ve komutlar eski kodla kosmaya devam eder — cikti dogru gorunur,
+    yalnizca YANLIS SURUMDUR. Kurulum saglik kontrolu bunu soylemek zorunda.
+
+    Kurulum yeri sabittir (`~/.agent-context`): doctor calisan binary'yi degil
+    KURULUMU denetler, ve iki implementasyon ayni cevabi vermelidir.
+    """
+    kok = Path.home() / ".agent-context"
+    binary = next((p for p in (kok / "bin" / "ctx.exe", kok / "bin" / "ctx.bin")
+                   if p.is_file()), None)
+    if binary is None:
+        return []  # binary yok -> sarmalayici Python'u secer, bayatlik kavrami yok
+
+    try:
+        binary_zaman = binary.stat().st_mtime
+    except OSError:
+        return []
+
+    kaynaklar = [kok / "bin" / "ctx.py", kok / "go.mod"]
+    kaynaklar += [p for p in (kok / "go").rglob("*.go") if not p.name.endswith("_test.go")]
+    kaynaklar.append(kok / "embed.go")
+    kaynaklar += list((kok / "templates").rglob("*"))  # sablonlar binary'ye GOMULU
+
+    yeniler = []
+    for p in kaynaklar:
+        try:
+            if p.is_file() and p.stat().st_mtime > binary_zaman:
+                yeniler.append(p.relative_to(kok).as_posix())
+        except OSError:
+            continue
+    if not yeniler:
+        return []
+
+    ornek = ", ".join(sorted(yeniler)[:3])
+    if len(yeniler) > 3:
+        ornek += f" (+{len(yeniler) - 3})"
+    return [f"derlenmis ctx BAYAT — {len(yeniler)} kaynak daha yeni ({ornek}); "
+            f"`go build -o bin/ctx.exe ./go/cmd/ctx`"]
+
 
 def komut_doctor(args) -> int:
     yol = manifest_bul(Path(args.repo) if args.repo else Path.cwd())
@@ -1032,13 +1271,23 @@ def komut_doctor(args) -> int:
 
     kontrol(not hatalar, f"{sayi} not yapisal dogrulamadan gecti"
             + (f" — {len(hatalar)} HATA" if hatalar else ""))
-    for _, yol, mesaj in hatalar[:5]:
-        print(f"    ✗ {yol} · {mesaj}")
+    # DIKKAT: dongu degiskeni `yol` OLAMAZ — `yol` manifest'in Path'ini tutuyor ve
+    # asagida `_index_hedefleri(yol, ...)` ona ihtiyac duyuyor. Ustune yazilinca
+    # `ctx doctor`, hafizada YAPISAL HATA VARKEN AttributeError ile coker; temiz
+    # korpusta hic gorunmez. 2026-08-13'te Go paritesi sirasinda yakalandi.
+    for _, bulgu_yolu, mesaj in hatalar[:5]:
+        print(f"    ✗ {bulgu_yolu} · {mesaj}")
     if len(hatalar) > 5:
         print(f"    (+{len(hatalar) - 5} hata daha — 'ctx validate' ile tamamini gor)")
 
     kontrol((hafiza / "tasks" / "OPEN.md").is_file(), "tasks/OPEN.md var")
     kontrol((hafiza / "sessions" / "CURRENT.md").is_file(), "sessions/CURRENT.md var")
+
+    # Derlenmis binary BAYAT mi? `bin/ctx` sarmalayicisi varsa binary'yi SESSIZCE
+    # tercih eder — bu, kaynagi degistirip yeniden derlemeyi unutan herkesin eski
+    # kodu kosturmasi demektir ve hicbir yerde belli olmaz. Tek gorunur yer burasi.
+    for satir in _binary_tazeligi():
+        uyarilar.append(("uyari", "bin/ctx", satir))
 
     # Her-zaman-yuklu harita: hedef dosyalardaki blok bayatsa harness'siz araclar
     # (Codex/Cursor) eski korpusu gorur. UYARI seviyesinde — cikis kodunu etkilemez.
@@ -1055,8 +1304,8 @@ def komut_doctor(args) -> int:
     # uyarilar cikis kodunu ETKILEMEZ — doctor'un yesil kalmasi gerekir
     if uyarilar:
         print(f"\n{len(uyarilar)} uyari (cikis kodunu etkilemez):")
-        for _, yol, mesaj in uyarilar[:8]:
-            print(f"  ⚠ {yol} · {mesaj}")
+        for _, bulgu_yolu, mesaj in uyarilar[:8]:
+            print(f"  ⚠ {bulgu_yolu} · {mesaj}")
         if len(uyarilar) > 8:
             print(f"  (+{len(uyarilar) - 8} uyari daha)")
     return hata
@@ -1144,7 +1393,11 @@ def komut_migrate(args) -> int:
     degisen = atlanan = 0
 
     for p, goreli in notlari_gez(hafiza):
-        metin = p.read_text(encoding="utf-8")
+        # HAM okuma (newline=""): `read_text` evrensel satir sonu cevirisi yapar
+        # ve "\r\n"i "\n"e dondurur — yani dosyanin GERCEK satir sonu gorunmez
+        # olur ve korunamaz. Ayristirma bundan etkilenmez: `splitlines()` \r'yi
+        # zaten dusurur, frontmatter degerleri `.strip()`ten gecer.
+        metin = _oku_ham(p)
         fm = frontmatter(metin)
         eski = str(fm.get("lifecycle") or "").strip()
         if not eski:
@@ -1174,10 +1427,17 @@ def komut_migrate(args) -> int:
         print(f"  {goreli.as_posix()} · lifecycle: {eski} → "
               f"status: {status}" + (f" · scope: [{', '.join(kapsam)}]" if kapsam else " (evrensel)"))
         if yaz:
-            son = "\n".join(cikti)
+            # Satir sonu KORUNUR — `_blok_degistir` ile ayni kural, ayni gerekce.
+            # Onceki surum `write_text`i metin modunda cagiriyordu; Windows'ta bu,
+            # LF olan her notu CRLF'e ceviriyordu ve migrate'in kendi sozunu
+            # ("satir bazli, gerisine DOKUNMAZ") bozuyordu: tek satirlik degisiklik
+            # diff'te butun dosya olarak goruluyordu. splitlines() zaten \r'yi
+            # dusurdugu icin birlestirme dosyanin KENDI ekiyle yapilir.
+            nl = "\r\n" if "\r\n" in metin else "\n"
+            son = nl.join(cikti)
             if metin.endswith("\n"):
-                son += "\n"
-            p.write_text(son, encoding="utf-8")
+                son += nl
+            p.write_text(son, encoding="utf-8", newline="")
         degisen += 1
 
     print(f"\n{degisen} not cevrildi, {atlanan} atlandi"
@@ -1190,9 +1450,15 @@ def komut_migrate(args) -> int:
 
 # ---------------------------------------------------------- bootstrap
 
+# SessionStart kancalari: (hook adi, eski script adi, durum mesaji, zaman asimi).
+#
+# Eski script adi yalnizca GECIS icin durur: 2026-08-13'ten once settings.json'a
+# `python ".../ctx_index.py"` diye kaydedilmisti. Kayit artik dogrudan `ctx`
+# sarmalayicisini cagirir (bkz. `_ctx_sarmalayici`), ama eski kayit taninip
+# YERINDE guncellenmeli — aksi halde ayni kanca iki kez kosardi.
 HOOK_KAYITLARI = (
-    ("ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20),
-    ("ctx_index.py", "Hafiza haritasi yukleniyor...", 20),
+    ("capture-check", "ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20),
+    ("index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20),
 )
 
 
@@ -1200,36 +1466,34 @@ def _claude_dizini() -> Path:
     return Path.home() / ".claude"
 
 
-def hook_kur(yaz: bool = True) -> list[str]:
-    """SessionStart kancalarini yerlestirir ve settings.json'a KAYDEDER.
+def _ctx_sarmalayici() -> Path:
+    """Kancalarin cagiracagi tek giris noktasi.
 
-    Iki sey ayri: dosyayi kopyalamak (kolay) ve harness'a tanitmak (asil is).
-    Ikincisi 2026-08-12'de elle yapildi; bu fonksiyon onu tekrarlanabilir kilar.
+    Implementasyon DEGIL, sarmalayici kaydedilir: `bin/ctx` once derlenmis
+    binary'yi, yoksa Python'u secer. Boylece settings.json, Go gecisinden ve
+    binary'nin o makinede derlenmis olup olmamasindan etkilenmez.
+    """
+    return Path.home() / ".agent-context" / "bin" / "ctx"
+
+
+def _hook_komutu(ad: str) -> str:
+    return f'"{_ctx_sarmalayici()}" hook {ad}'
+
+
+def hook_kur(yaz: bool = True) -> list[str]:
+    """SessionStart kancalarini settings.json'a KAYDEDER.
+
+    Artik dosya kopyalanmaz: kancalarin kendisi aracin icinde (`ctx hook ...`).
+    Onceden `~/.claude/hooks/` altina iki Python script'i yazilirdi; onlar ince
+    sarmalayicidan ibaretti ve ayri bir kopya olarak bakim istiyordu.
 
     settings.json kullanicinin KENDI ayarlarini tasir → uzerine YAZILMAZ, yalniz
-    eksik kayit eklenir (idempotent: ikinci kosumda hicbir sey degismez).
+    eksik kayit eklenir ya da eski kayit yerinde guncellenir (idempotent).
     """
     rapor: list[str] = []
-    hedef_dizin = _claude_dizini() / "hooks"
-    kaynak_dizin = SABLON / "hooks"
-    if yaz:
-        hedef_dizin.mkdir(parents=True, exist_ok=True)
-
-    for ad, _mesaj, _sure in HOOK_KAYITLARI:
-        kaynak = kaynak_dizin / ad
-        hedef = hedef_dizin / ad
-        if not kaynak.is_file():
-            rapor.append(f"! sablon yok: {kaynak}")
-            continue
-        yeni = kaynak.read_text(encoding="utf-8")
-        if hedef.is_file() and hedef.read_text(encoding="utf-8") == yeni:
-            rapor.append(f"= {ad} (guncel)")
-            continue
-        if yaz:
-            hedef.write_text(yeni, encoding="utf-8")
-        rapor.append(f"+ {ad} ({'yazildi' if yaz else 'yazilacak'})")
-
     ayar_yolu = _claude_dizini() / "settings.json"
+    if yaz:
+        _claude_dizini().mkdir(parents=True, exist_ok=True)
     try:
         ayarlar = json.loads(ayar_yolu.read_text(encoding="utf-8")) if ayar_yolu.is_file() else {}
     except (json.JSONDecodeError, OSError) as e:
@@ -1240,24 +1504,38 @@ def hook_kur(yaz: bool = True) -> list[str]:
     if not kancalar:
         kancalar.append({"hooks": []})
     liste = kancalar[0].setdefault("hooks", [])
-    mevcut = " ".join(str(k.get("command", "")) for k in liste)
 
-    eklendi = False
-    for ad, mesaj, sure in HOOK_KAYITLARI:
-        if ad in mevcut:
+    degisti = False
+    for ad, eski_script, mesaj, sure in HOOK_KAYITLARI:
+        istenen = _hook_komutu(ad)
+        # Kaydin BIZIM olup olmadigi iki isaretten anlasilir: yeni bicim
+        # (`hook <ad>`) ya da eski script adi. Ikincisi olmadan gecis kaydi
+        # taninmaz ve ayni kanca iki kez kosardi.
+        girdi = next(
+            (k for k in liste
+             if eski_script in str(k.get("command", ""))
+             or f"hook {ad}" in str(k.get("command", ""))),
+            None,
+        )
+        if girdi is None:
+            liste.append({
+                "type": "command",
+                "command": istenen,
+                "shell": "bash",
+                "timeout": sure,
+                "statusMessage": mesaj,
+            })
+            degisti = True
+            rapor.append(f"+ settings.json: {ad} eklendi")
+        elif str(girdi.get("command", "")) != istenen:
+            # YERINDE guncelleme: kullanicinin sirasi ve diger alanlari korunur.
+            girdi["command"] = istenen
+            degisti = True
+            rapor.append(f"↻ settings.json: {ad} → `ctx hook {ad}` olarak guncellendi")
+        else:
             rapor.append(f"= settings.json: {ad} kayitli")
-            continue
-        liste.append({
-            "type": "command",
-            "command": f'python "{hedef_dizin / ad}"',
-            "shell": "bash",
-            "timeout": sure,
-            "statusMessage": mesaj,
-        })
-        eklendi = True
-        rapor.append(f"+ settings.json: {ad} eklendi")
 
-    if eklendi and yaz:
+    if degisti and yaz:
         ayar_yolu.write_text(json.dumps(ayarlar, ensure_ascii=False, indent=2), encoding="utf-8")
     return rapor
 
@@ -1413,6 +1691,11 @@ def main() -> int:
     mg.add_argument("--repo")
     mg.add_argument("--kuru", action="store_true", help="hicbir sey yazma, ne yapacagini goster")
     mg.set_defaults(fn=komut_migrate)
+
+    hk = alt.add_parser("hook", help="SessionStart kancalari (harness cagirir)")
+    hk.add_argument("ad", choices=["index", "capture-check"])
+    hk.add_argument("--repo")
+    hk.set_defaults(fn=komut_hook)
 
     b = alt.add_parser("bootstrap",
                        help="yeni projede TEK KOMUTLA kurulum (init + kancalar + kalite kapisi)")

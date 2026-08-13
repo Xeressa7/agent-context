@@ -23,6 +23,12 @@ Her dosya `{version, description, cases[]}` taşır. Her vaka bir `why` alanı
 içerir: **vektör neden var**, hangi arızayı ya da kararı kilitliyor. Bir vaka
 değiştirilecekse önce o cümle okunmalı.
 
+## Tuzak: Go test önbelleği
+
+Bu dosyalar Go modülünün **dışında** yaşar; `go test` önbelleği onlardaki
+değişikliği fark etmez ve vektörü değiştirdikten sonra eski sonucu "ok" diye
+geri verebilir. Vektör düzenledikten sonra **`go test -count=1 ./...`**.
+
 ## Mutlak puanlar hakkında
 
 `scoring.json` mutlak puan bekler (sıralama değil). Ağırlık tablosu bilinçli
