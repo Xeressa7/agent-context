@@ -61,14 +61,48 @@ superseded_by: null               # yerine geçen not varsa göreli yolu
 
 ## Klasörler
 
-- `domain/` — ürün/domain gerçekleri (product)
-- `architecture/` — güncel mimari sınırlar (current)
-- `decisions/` — verilmiş kararlar ve gerekçeleri
-- `pitfalls/` — pahalıya mal olmuş dersler
-- `legacy/<repo>/` — dar kapsamlı bilgi (örn. `scope: [legacy]`)
-- `historical/` — `status: archived` kayıtlar (geçmiş deney/postmortem)
+Bir notun tek anlamlı sorusu **"bu ne tür bir iddia ve onu ne geçersiz kılar?"**
+Klasör şeması bu soruya göre kurulur ve üç kutudan ibarettir:
+
+| Klasör | İddia | Neyle geçersiz olur |
+|---|---|---|
+| `facts/` | sistem/ürün **nasıl** çalışıyor | gerçeklik değişince |
+| `decisions/` | **neden** öyle | yeni karar eskisini geçersiz kılınca |
+| `pitfalls/` | ne **ısırdı**, kural ne | tuzak kökten kapanınca |
+
+Hafıza olmayan, bilerek ayrı duran iki durum dosyası:
+
 - `tasks/OPEN.md` — TÜM açık işlerin tek adresi (durable memory DEĞİL)
 - `sessions/CURRENT.md` — son 1-2 çalışma turu (durable memory DEĞİL)
+
+**Arşiv ve kapsam KLASÖR DEĞİLDİR, frontmatter'dır.** `status: archived` notu
+aramadan ve haritadan zaten çıkarır; `scope: [legacy]` kapsam filtresini zaten
+uygular. Ayrıca bir `historical/` ya da `legacy/` klasörü tutmak aynı bilgiyi
+ikinci kez kodlar ve iki kayıt er geç ayrışır — tek mekanizma frontmatter'dır.
+
+Klasör adları **iskeledir, İngilizce kalır**; içerik projenin dilindedir.
+`domain/` bilerek kullanılmaz: DDD'de "iş alanı" demektir ve bir altyapı
+reposunda karşılığı yoktur; ayrıca aynı kelimeyi "ürün gerçeği" anlamında
+kullanan proje sözleşmeleriyle çakışır.
+
+Notun türü **klasörden okunur**, `type:` alanından değil. `type` zorunlu
+değildir; yalnız gerçek bir ALT-TÜR taşıyorsa yazılır (`type: runbook`).
+
+Task lifecycle sözleşmesi: `tasks/OPEN.md` hariç `tasks/` altındaki her Markdown
+dosyası açık bir iş olarak kabul edilir ve OPEN indeksinde yer alır; yalnızca
+`status: archived` veya eski `lifecycle: historical` taşıyan dosya indeksten
+çıkarılabilir. Bağımsız iş kapanınca dosya ve OPEN satırı silinir. Karma task
+dosyasında yalnız kapanan madde silinir; dosya başka açık maddeler kaldığı için
+yaşar. `sessions/CURRENT.md` indeks değil, son turun kanıt ve devam kaydıdır.
+
+**Kapanan madde SİLİNİR, işaretlenmez.** İşaretlenip bırakılan madde iki maliyet
+üretir: bir sonraki oturum onu okumak için token harcar ve iş listesinden iş
+alırken aynı işi yeniden alabilir. Neyin kapandığı git geçmişindedir; task
+dosyası yalnız AÇIK işi taşır. Kapı bunu ölçer: aktif (arşiv olmayan) bir task
+dosyasında işaretli onay kutusu (`- [x]`) bulunması **hatadır**. Projeye özgü
+kapanış sözcükleri araca gömülü değildir, hafızanın kendi `ctx.yaml`'ındaki
+`closed_markers` listesinden gelir; kapanış biçimini ANLATAN satır `ctx:acik`
+ile muaf tutulur.
 
 ## Yazma politikası
 
@@ -79,6 +113,8 @@ superseded_by: null               # yerine geçen not varsa göreli yolu
 - Task/session durumu ("push bekliyor", "test kırık") nota girmez → `tasks/OPEN.md`.
 - Secret/PII asla girmez. Doğru biçim: "Deployment ADMIN_SECRET ister; değer bu
   reponun dışında yaşar."
+- Kapanış kapısı `ctx validate`'dır: OPEN içindeki yerel linkler mevcut olmalı;
+  aktif task dosyası indekssiz, arşiv taskı indeksli bırakılamaz.
 
 ## Talimat önceliği — kime uyarım
 
@@ -135,6 +171,7 @@ yüklenir. Harita notun kendisi değildir; ajan haritada isabet görünce **o no
 | Araç | Nasıl okur | Tazelik |
 |---|---|---|
 | Claude Code | `SessionStart` hook `ctx index` çıktısını bağlama basar | her oturum, canlı |
+| Claude Code / Hermes | `SessionEnd` + `PreCompact` hook `ctx hook flush` ile ham oturum dökümünü diske düşürür | her kapanış |
 | Codex / Cursor / Copilot | `AGENTS.md` içindeki `ctx:index` bloğu | `ctx index --yaz` |
 | harness'sız / CI | `ctx index` çıktısını okur | anında |
 
@@ -155,6 +192,40 @@ hafızanın kendi `ctx.yaml`'ındadır (`consumers:`) — "beni kimler okuyor" h
 özelliğidir. Her tüketici KENDİ manifest'iyle hesaplanır; kapsam filtresi repodan
 repoya değişir. (2026-08-13'e kadar söz repo başına geçerliydi ve ölçüldü ki iki repo
 dokuz gün geride kalmıştı.)
+
+## Oturum kapanışı — disiplin değil mekanizma
+
+Kapanışta bir şey yazmayı **modelin hatırlaması** güvenilmez bir sözleşmedir:
+kapanış tam da modelin dikkatinin ve bütçesinin bittiği andır. Bu yüzden kapanış
+kancası (`ctx hook flush`) transcript'i okur ve ham dökümü `sessions/.pending/`
+altına bırakır; bir sonraki oturumun `capture-check`'i onu yüzeye çıkarır ve notu
+**yine lider ajan** yazar.
+
+**Model ÇAĞRILMAZ.** Kapanış kancası her araçta saniyeler içinde dönmek zorundadır;
+arka planda bir özetleyici çağırmak (a) kota yakar, (b) aynı deponun kancalarını
+tetikleyip özyinelemeye girer, (c) başka bir sağlayıcıda karşılığı yoktur. Ham
+döküm bedava ve deterministiktir; özetlemeyi bir sonraki oturum zaten açık olan
+bağlamıyla yapar. Özyineleme kapısı: `CTX_HOOK_ICINDE`.
+
+Okuyucular saplanmaz, araç başına ayrışır: Claude `text`, Codex ve Hermes
+`input_text`/`output_text` yazar (ölçüldü 2026-08-28; yalnız `text` arayan okuyucu
+Codex dökümünden SIFIR tur çıkarıp sessizce hiçbir şey yazmadı). Hermes dosya yolu
+değil `session_id` verir; oturum SQLite'ta yaşar ve aracın kendi
+`sessions export --redact` arayüzüyle çıkarılır — şema ayrıştırılmaz.
+
+**PII:** transcript gerçek ad/adres taşıyabilir. `sessions/.pending/` gitignore'ludur,
+makine-yereldir ve hafızaya asla commit edilmez.
+
+## Bağlam bütçesi
+
+Kancayla ENJEKTE edilen haritanın karakter tavanı vardır (`INDEX_BUTCE`, 16.000);
+dosyaya yazılan blok tavansızdır, çünkü dosya isteğe bağlı okunur ama enjeksiyon
+her oturumun bağlamını yer.
+
+Tavan aşılınca **not düşürülmez** — açıklama kısaltılır (95 → 80 → 55 → 35) ve
+kısaltma çıktıda açıkça yazılır. Not düşürmek sessiz kapsam kaybıdır: harita
+"hepsi bu" diye okunur ve görünmeyen not hiç aranmaz. En kısa biçimde bile
+sığmıyorsa bu da yüksek sesle söylenir; sessizce kırpılmaz.
 
 ## Kurulum
 
@@ -191,6 +262,7 @@ skip_dirs:     [gecis]                  # not sayılmayan ek dizinler
 archive_index: gecis/legacy-index.md    # devralınan, KANONİK OLMAYAN indeks
 pii_profiles:  [tr]                     # ülkeye özel PII desenleri (tr · us · de)
 review_days:   90                       # `current` notun gözden geçirme aralığı
+closed_markers: [KAPANDI]               # projeye özgü "iş bitti" sözcükleri
 ```
 
 Dosya yoksa güvenli varsayılanlar geçerlidir: yalnız `tasks/` + `sessions/` atlanır,

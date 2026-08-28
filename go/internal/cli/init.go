@@ -130,7 +130,7 @@ func Init(env Env, opts InitOptions) int {
 
 // memoryFolders is the note taxonomy as folders. They are created empty (with
 // .gitkeep) so the shape of the memory is visible before the first note exists.
-var memoryFolders = []string{"domain", "architecture", "decisions", "pitfalls", "legacy", "historical"}
+var memoryFolders = []string{"facts", "decisions", "pitfalls"}
 
 func scaffoldMemory(memory, project string) error {
 	for _, d := range []string{"tasks", "sessions"} {

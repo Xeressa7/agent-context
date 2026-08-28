@@ -33,7 +33,7 @@ const (
 
 // folderOrder is reading priority: product truth first, then architecture and
 // decisions, then lessons. Anything unlisted follows, alphabetically.
-var folderOrder = []string{"domain", "architecture", "decisions", "pitfalls", "legacy", "historical"}
+var folderOrder = []string{"facts", "decisions", "pitfalls"}
 
 // IndexOptions mirrors the Python `ctx index` flags.
 type IndexOptions struct {
@@ -44,22 +44,59 @@ type IndexOptions struct {
 }
 
 // shorten squeezes whitespace and clips to a word boundary.
-func shorten(text string) string {
+func shorten(text string, limit int) string {
 	text = squeeze(text)
 	runes := []rune(text)
-	if len(runes) <= descLimit {
+	if len(runes) <= limit {
 		return text
 	}
-	cut := string(runes[:descLimit])
+	cut := string(runes[:limit])
 	if i := strings.LastIndex(cut, " "); i > 0 {
 		cut = cut[:i]
 	}
 	return cut + "…"
 }
 
+// indexBudget is the character ceiling for the map INJECTED by the hook. The
+// block written into files is uncapped: a file is read on demand, an injection
+// eats every session's context.
+//
+// Over budget, NO NOTE IS DROPPED — descriptions shrink instead. Dropping notes
+// is a silent loss of coverage: the map reads as "this is all of it" and the
+// invisible note is never searched for. A shortened description still leaves
+// the line there, and the agent can open the note.
+const indexBudget = 16000
+
+var descLimitSteps = []int{descLimit, 80, 55, 35}
+
+// IndexBodyBudgeted fits the map under the ceiling, full first, then with
+// progressively shorter descriptions.
+func IndexBodyBudgeted(ctx store.Context, budget int) (string, error) {
+	body, err := IndexBody(ctx, false)
+	if err != nil || budget <= 0 || len([]rune(body)) <= budget {
+		return body, err
+	}
+	for _, limit := range descLimitSteps[1:] {
+		body, err = indexBodyLimited(ctx, false, limit)
+		if err != nil {
+			return body, err
+		}
+		if len([]rune(body)) <= budget {
+			return body + "\n\n[not: harita tavana sigsin diye aciklamalar " +
+				itoa(limit) + " karaktere kisaltildi — tam metin notun kendisindedir]", nil
+		}
+	}
+	return body + "\n\n[not: harita EN KISA bicimde bile tavani asiyor; " +
+		"korpus bolunmeli — `ctx doctor`]", nil
+}
+
 // IndexBody renders the note map. Deterministic by construction: the walk is
 // path-sorted and the folder order is fixed.
 func IndexBody(ctx store.Context, all bool) (string, error) {
+	return indexBodyLimited(ctx, all, descLimit)
+}
+
+func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 	notes, err := store.LoadNotes(ctx.MemoryPath)
 	if err != nil {
 		return "", err
@@ -74,7 +111,7 @@ func IndexBody(ctx store.Context, all bool) (string, error) {
 		}
 		group, name, _ := strings.Cut(n.Rel, "/")
 		groups[group] = append(groups[group],
-			"- `"+name+"` — "+shorten(n.FrontMatter["description"]))
+			"- `"+name+"` — "+shorten(n.FrontMatter["description"], limit))
 		count++
 	}
 

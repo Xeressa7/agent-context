@@ -23,6 +23,7 @@ type BootstrapOptions struct {
 // calls the ctx wrapper directly, but an old entry has to be recognised and
 // updated IN PLACE — otherwise the same hook would run twice.
 type hookEntry struct {
+	event        string
 	name         string
 	legacyScript string
 	message      string
@@ -30,8 +31,13 @@ type hookEntry struct {
 }
 
 var hookEntries = []hookEntry{
-	{"capture-check", "ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20},
-	{"index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20},
+	{"SessionStart", "capture-check", "ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20},
+	{"SessionStart", "index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20},
+	// Close and compaction: the session digest is dropped to disk. The model
+	// has to remember nothing — MECHANISM, not discipline. The transcript path
+	// arrives on stdin and no model is called, so it returns fast.
+	{"SessionEnd", "flush --arac claude --sebep sessionend", "", "Oturum dokumu kaydediliyor...", 15},
+	{"PreCompact", "flush --arac claude --sebep precompact", "", "Oturum dokumu kaydediliyor...", 15},
 }
 
 // ctxWrapper is the single entry point hooks call. The WRAPPER is registered,
@@ -146,19 +152,6 @@ func installHooks(write bool) []string {
 		settings = parsed
 	}
 
-	sessionStart := settings.Object("hooks").Array("SessionStart")
-	if len(sessionStart) == 0 {
-		group := jsonx.NewObject()
-		group.Set("hooks", []any{})
-		sessionStart = append(sessionStart, group)
-	}
-	group, ok := sessionStart[0].(*jsonx.Object)
-	if !ok {
-		return append(report, "! settings.json okunamadi (SessionStart bicimi beklenmedik)"+
-			" — hook KAYDEDILMEDI, elle ekleyin")
-	}
-	list := group.Array("hooks")
-
 	command := func(item any) (*jsonx.Object, string) {
 		entry, ok := item.(*jsonx.Object)
 		if !ok {
@@ -174,7 +167,23 @@ func installHooks(write bool) []string {
 
 	changed := false
 	for _, hook := range hookEntries {
+		bucket := settings.Object("hooks").Array(hook.event)
+		if len(bucket) == 0 {
+			g := jsonx.NewObject()
+			g.Set("hooks", []any{})
+			bucket = append(bucket, g)
+		}
+		group, ok := bucket[0].(*jsonx.Object)
+		if !ok {
+			return append(report, "! settings.json okunamadi ("+hook.event+
+				" bicimi beklenmedik) — hook KAYDEDILMEDI, elle ekleyin")
+		}
+		list := group.Array("hooks")
 		want := hookCommand(hook.name)
+		// Matching looks at the hook name's FIRST WORD; the flags after it
+		// (`--arac ...`) can change later, and when they do the entry must be
+		// updated IN PLACE, never appended a second time.
+		root := strings.Fields(hook.name)[0]
 
 		var found *jsonx.Object
 		var current string
@@ -183,7 +192,8 @@ func installHooks(write bool) []string {
 			if entry == nil {
 				continue
 			}
-			if strings.Contains(cmd, hook.legacyScript) || strings.Contains(cmd, "hook "+hook.name) {
+			if (hook.legacyScript != "" && strings.Contains(cmd, hook.legacyScript)) ||
+				strings.Contains(cmd, "hook "+root) {
 				found, current = entry, cmd
 				break
 			}
@@ -199,19 +209,19 @@ func installHooks(write bool) []string {
 			entry.Set("statusMessage", hook.message)
 			list = append(list, entry)
 			changed = true
-			report = append(report, "+ settings.json: "+hook.name+" eklendi")
+			report = append(report, "+ settings.json["+hook.event+"]: "+root+" eklendi")
 		case current != want:
 			// IN PLACE: the user's ordering and any other fields they set are
 			// left exactly as they were.
 			found.Set("command", want)
 			changed = true
-			report = append(report, "↻ settings.json: "+hook.name+" → `ctx hook "+hook.name+"` olarak guncellendi")
+			report = append(report, "↻ settings.json["+hook.event+"]: "+root+" guncellendi")
 		default:
-			report = append(report, "= settings.json: "+hook.name+" kayitli")
+			report = append(report, "= settings.json["+hook.event+"]: "+root+" kayitli")
 		}
+		group.Set("hooks", list)
+		settings.Object("hooks").Set(hook.event, bucket)
 	}
-	group.Set("hooks", list)
-	settings.Object("hooks").Set("SessionStart", sessionStart)
 
 	if changed && write {
 		if text, err := jsonx.Marshal(settings); err == nil {

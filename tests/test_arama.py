@@ -47,8 +47,8 @@ def test_indir_turkce_ve_ascii_yazim_ayni_anahtara_duser(ctx_modul):
 
 def test_yol_govdeden_agir_basar(ctx_modul):
     fm = {"title": "T", "description": "D"}
-    yol_isabeti = puanla(ctx_modul, "domain/billing.md", fm, "alakasiz metin", "billing")
-    govde_isabeti = puanla(ctx_modul, "domain/baska.md", fm, "icinde billing gecen govde", "billing")
+    yol_isabeti = puanla(ctx_modul, "facts/billing.md", fm, "alakasiz metin", "billing")
+    govde_isabeti = puanla(ctx_modul, "facts/baska.md", fm, "icinde billing gecen govde", "billing")
     assert yol_isabeti[0] > govde_isabeti[0]
 
 
@@ -56,14 +56,14 @@ def test_kod_parcasi_govdeden_agir_basar(ctx_modul):
     """Backtick icindeki dosya/fonksiyon adi ayri cikarilir (agirlik 60) —
     `distinct_lab_names` diye aratinca notu bulabilmek icin."""
     fm = {"title": "T", "description": "D"}
-    kodlu = puanla(ctx_modul, "domain/a.md", fm, "kod: `distinct_lab_names` burada", "distinct_lab_names")
-    duz = puanla(ctx_modul, "domain/b.md", fm, "distinct_lab_names duz metinde", "distinct_lab_names")
+    kodlu = puanla(ctx_modul, "facts/a.md", fm, "kod: `distinct_lab_names` burada", "distinct_lab_names")
+    duz = puanla(ctx_modul, "facts/b.md", fm, "distinct_lab_names duz metinde", "distinct_lab_names")
     assert kodlu[0] > duz[0]
 
 
 def test_baslik_aciklamadan_agir_basar(ctx_modul):
-    baslikta = puanla(ctx_modul, "domain/a.md", {"title": "kontenjan", "description": "x"}, "govde", "kontenjan")
-    aciklamada = puanla(ctx_modul, "domain/b.md", {"title": "x", "description": "kontenjan"}, "govde", "kontenjan")
+    baslikta = puanla(ctx_modul, "facts/a.md", {"title": "kontenjan", "description": "x"}, "govde", "kontenjan")
+    aciklamada = puanla(ctx_modul, "facts/b.md", {"title": "x", "description": "kontenjan"}, "govde", "kontenjan")
     assert baslikta[0] > aciklamada[0]
 
 
@@ -81,24 +81,24 @@ def test_eslesmeyen_kelime_notu_ELEMEZ(ctx_modul):
 
 
 def test_hicbir_kelime_tutmazsa_aday_degil(ctx_modul):
-    sonuc = puanla(ctx_modul, "domain/a.md", {"title": "T", "description": "D"}, "govde", "hicalakasizsorgu")
+    sonuc = puanla(ctx_modul, "facts/a.md", {"title": "T", "description": "D"}, "govde", "hicalakasizsorgu")
     assert sonuc is None
 
 
 def test_kapsama_carpani_tam_eslesmeyi_one_alir(ctx_modul):
     """Iki notun ham puani ayniyken, sorgunun TAMAMINI karsilayan onde olmali."""
-    tam = puanla(ctx_modul, "domain/a.md", {"title": "tenant izolasyonu", "description": "d"},
+    tam = puanla(ctx_modul, "facts/a.md", {"title": "tenant izolasyonu", "description": "d"},
                  "govde", "tenant izolasyonu")
-    yarim = puanla(ctx_modul, "domain/b.md", {"title": "tenant baska", "description": "d"},
+    yarim = puanla(ctx_modul, "facts/b.md", {"title": "tenant baska", "description": "d"},
                    "govde", "tenant izolasyonu")
     assert tam[0] > yarim[0]
 
 
 def test_tam_ifade_bonusu(ctx_modul):
     """Cok kelimeli sorgunun tamami bir alanda birebir geciyorsa ek puan alir."""
-    bitisik = puanla(ctx_modul, "domain/a.md", {"title": "tenant izolasyonu", "description": "d"},
+    bitisik = puanla(ctx_modul, "facts/a.md", {"title": "tenant izolasyonu", "description": "d"},
                      "govde", "tenant izolasyonu")
-    dagilmis = puanla(ctx_modul, "domain/b.md", {"title": "tenant ve baska izolasyonu", "description": "d"},
+    dagilmis = puanla(ctx_modul, "facts/b.md", {"title": "tenant ve baska izolasyonu", "description": "d"},
                       "govde", "tenant izolasyonu")
     assert bitisik[0] > dagilmis[0]
     assert "ifade" in bitisik[1]
@@ -107,7 +107,7 @@ def test_tam_ifade_bonusu(ctx_modul):
 # ------------------------------------------------------------ gerekce
 
 def test_gerekce_en_agir_alani_once_yazar(ctx_modul):
-    sonuc = puanla(ctx_modul, "domain/billing.md", {"title": "billing", "description": "billing"},
+    sonuc = puanla(ctx_modul, "facts/billing.md", {"title": "billing", "description": "billing"},
                    "billing", "billing")
     assert sonuc[1][0] in ("yol", "ifade")
 

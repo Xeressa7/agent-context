@@ -37,14 +37,24 @@ mevcut kancaların, ilgisiz ayarların ve projenin kendi `core.hooksPath`'inin
 |---|---|
 | `ctx search "<sorgu>"` | Kapsama göre filtreli arama; alan ağırlıklı, aksan-duyarsız |
 | `ctx index [--yaz]` | Her-zaman-yüklü not haritası (hook + `AGENTS.md` bloğu) |
-| `ctx validate [--tam]` | Not kalitesi; `--tam` ile PII/secret taraması |
+| `ctx validate [--tam]` | Not + task/OPEN.md tutarlılığı; `--tam` ile PII/secret taraması |
 | `ctx close --not <yol>` / `--yok "<gerekçe>"` | Oturumu capture kararıyla kapatır |
 | `ctx migrate` | Eski `lifecycle` alanını `status` + `scope`'a çevirir |
 | `ctx doctor` | Kurulum sağlığı |
 | `ctx init` / `ctx bootstrap` | Yeni proje kurulumu |
 | `ctx hook index` / `hook capture-check` | SessionStart kancaları (harness çağırır) |
+| `ctx hook flush` | SessionEnd/PreCompact kancası: ham oturum dökümünü `sessions/.pending/`e düşürür |
 
 ## Neden bu tasarım
+**Kapanış disiplin değil mekanizmadır.** Kapanışta not yazmayı modelin hatırlaması
+güvenilmez: kapanış tam da dikkatin ve bütçenin bittiği andır. `ctx hook flush`
+transcript'i okuyup ham dökümü diske bırakır (model ÇAĞRILMAZ — kota yok, özyineleme
+yok, her sağlayıcıda çalışır); bir sonraki oturumun `capture-check`'i onu yüzeye
+çıkarır ve notu yine lider ajan yazar.
+
+**Kapanan iş silinir, işaretlenmez.** İşaretli bırakılan madde iki maliyet üretir:
+sonraki oturum onu okumak için token harcar ve iş listesinden aynı işi yeniden
+alabilir. Neyin kapandığı git geçmişindedir. `ctx validate` bunu ölçer.
 
 **Aramanın tetikleyicisi yoktur.** Ölçüldü: 21 notluk bir korpus koca bir oturum
 boyunca hiç açılmadı, çünkü ajan aramayı çalıştırmayı düşünmedi. Bu yüzden

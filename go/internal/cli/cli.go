@@ -16,6 +16,17 @@ import (
 type Env struct {
 	Out io.Writer
 	Err io.Writer
+	// In is the hook payload channel. Nil means "no stdin", which every
+	// caller must treat as a silent no-op rather than an error.
+	In io.Reader
+}
+
+// stdin never returns nil, so callers can read unconditionally.
+func (e Env) stdin() io.Reader {
+	if e.In == nil {
+		return strings.NewReader("")
+	}
+	return e.In
 }
 
 func (e Env) printf(format string, a ...any) {

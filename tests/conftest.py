@@ -30,7 +30,7 @@ def ctx_modul():
 
 
 def not_yaz(hafiza: Path, goreli: str, *, title=None, description="Aciklama",
-            status="active", scope=None, lifecycle=None, type_="domain",
+            status="active", scope=None, lifecycle=None, type_=None,
             tags=None, components=None, updated="2026-08-13",
             superseded_by="null", govde="Govde metni."):
     """Test notu olusturur. Frontmatter alanlari ctx'in bekledigi sirada."""
@@ -44,8 +44,11 @@ def not_yaz(hafiza: Path, goreli: str, *, title=None, description="Aciklama",
         "---",
         f"title: {title}",
         f'description: "{description}"',
-        f"type: {type_}",
     ]
+    # `type` artik ZORUNLU DEGIL: klasor zaten notun turunu soyluyordu, alan
+    # onu ikinci kez kodluyordu. Yalnizca ALT-TUR icin yazilir.
+    if type_ is not None:
+        satirlar.append(f"type: {type_}")
     # Eski tek-eksenli alan yalniz ACIKCA istendiginde yazilir (geriye
     # uyumluluk testleri icin); varsayilan yeni modeldir.
     if lifecycle is not None:
@@ -73,7 +76,7 @@ def not_yaz(hafiza: Path, goreli: str, *, title=None, description="Aciklama",
 @pytest.fixture
 def hafiza(tmp_path):
     """Bos hafiza iskeleti (ctx'in bekledigi klasorler)."""
-    for klasor in ("domain", "architecture", "decisions", "pitfalls", "tasks", "sessions"):
+    for klasor in ("facts", "decisions", "pitfalls", "tasks", "sessions"):
         (tmp_path / klasor).mkdir()
     (tmp_path / "README.md").write_text("# test hafiza\n", encoding="utf-8")
     (tmp_path / "tasks" / "OPEN.md").write_text("# acik isler\n", encoding="utf-8")

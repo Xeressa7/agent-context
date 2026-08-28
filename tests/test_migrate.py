@@ -34,14 +34,14 @@ def _yaz_ham(hafiza, goreli, metin):
 def test_dort_eski_deger_de_cevrilir(ctx_modul, kurulum, capsys):
     proje, hafiza = kurulum
     for ad, eski in (("a", "product"), ("b", "current"), ("c", "legacy"), ("d", "historical")):
-        _yaz_ham(hafiza, f"domain/{ad}.md",
+        _yaz_ham(hafiza, f"facts/{ad}.md",
                  f"---\ntitle: {ad.upper()}\nlifecycle: {eski}\n---\n\ngovde\n")
 
     assert ctx_modul.komut_migrate(_Args(str(proje))) == 0
     capsys.readouterr()
 
     def fm(ad):
-        return ctx_modul.frontmatter((hafiza / f"domain/{ad}.md").read_text(encoding="utf-8"))
+        return ctx_modul.frontmatter((hafiza / f"facts/{ad}.md").read_text(encoding="utf-8"))
 
     assert fm("a") == {"title": "A", "status": "active"}                    # evrensel
     assert fm("b") == {"title": "B", "status": "active", "scope": "current"}
@@ -52,7 +52,7 @@ def test_dort_eski_deger_de_cevrilir(ctx_modul, kurulum, capsys):
 def test_bilinmeyen_deger_atlanir_dosya_degismez(ctx_modul, kurulum, capsys):
     proje, hafiza = kurulum
     metin = "---\ntitle: E\nlifecycle: uydurma\n---\n\ngovde\n"
-    p = _yaz_ham(hafiza, "domain/e.md", metin)
+    p = _yaz_ham(hafiza, "facts/e.md", metin)
 
     ctx_modul.komut_migrate(_Args(str(proje)))
     cikti = capsys.readouterr().out
@@ -65,7 +65,7 @@ def test_bilinmeyen_deger_atlanir_dosya_degismez(ctx_modul, kurulum, capsys):
 def test_kuru_kosum_yazmaz(ctx_modul, kurulum, capsys):
     proje, hafiza = kurulum
     metin = "---\ntitle: B\nlifecycle: current\n---\n\ngovde\n"
-    p = _yaz_ham(hafiza, "domain/b.md", metin)
+    p = _yaz_ham(hafiza, "facts/b.md", metin)
 
     ctx_modul.komut_migrate(_Args(str(proje), kuru=True))
     cikti = capsys.readouterr().out
@@ -86,8 +86,8 @@ def test_satir_sonu_KORUNUR(ctx_modul, kurulum, capsys):
     proje, hafiza = kurulum
     lf = "---\ntitle: LF\nlifecycle: current\n---\n\ngovde\n"
     crlf = "---\r\ntitle: CRLF\r\nlifecycle: current\r\n---\r\n\r\ngovde\r\n"
-    p_lf = _yaz_ham(hafiza, "domain/lf.md", lf)
-    p_crlf = _yaz_ham(hafiza, "domain/crlf.md", crlf)
+    p_lf = _yaz_ham(hafiza, "facts/lf.md", lf)
+    p_crlf = _yaz_ham(hafiza, "facts/crlf.md", crlf)
 
     ctx_modul.komut_migrate(_Args(str(proje)))
     capsys.readouterr()
@@ -103,7 +103,7 @@ def test_satir_sonu_KORUNUR(ctx_modul, kurulum, capsys):
 
 def test_son_newline_yoksa_eklenmez(ctx_modul, kurulum, capsys):
     proje, hafiza = kurulum
-    p = _yaz_ham(hafiza, "domain/son.md",
+    p = _yaz_ham(hafiza, "facts/son.md",
                  "---\ntitle: S\nlifecycle: current\n---\n\nson newline yok")
 
     ctx_modul.komut_migrate(_Args(str(proje)))
@@ -114,7 +114,7 @@ def test_son_newline_yoksa_eklenmez(ctx_modul, kurulum, capsys):
 
 def test_govde_ve_diger_alanlar_bozulmaz(ctx_modul, kurulum, capsys):
     proje, hafiza = kurulum
-    p = _yaz_ham(hafiza, "domain/z.md",
+    p = _yaz_ham(hafiza, "facts/z.md",
                  "---\ntitle: Z\nlifecycle: current\ndescription: aciklama\n"
                  "updated: 2026-08-13\n---\n\n"
                  "Govde `kod` ve [[link]] ve — tire.\nIkinci satir.\n")

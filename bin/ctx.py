@@ -61,6 +61,7 @@ ATLA = {"tasks", "sessions", ".git"}
 #   skip_dirs:    [gecis]      not sayilmayan ek dizinler
 #   pii_profiles: [tr]         ulkeye ozel PII desenleri (bkz. _PII_PROFILLERI)
 #   review_days:  90           `current` notun gozden gecirme araligi
+#   closed_markers: [KAPANDI]  projeye ozgu 'is bitti' sozcukleri (task kapisi)
 #   archive_index: gecis/legacy-index.md   devralinan, kanonik OLMAYAN indeks
 #
 # Neden tuketici repodaki context.yaml'da degil: bunlar HAFIZANIN ozellikleridir
@@ -489,9 +490,10 @@ def komut_search(args) -> int:
 
 INDEX_BAS = "<!-- ctx:index:basla -->"
 INDEX_SON = "<!-- ctx:index:bitir -->"
+NL = chr(10)
 INDEX_ACIKLAMA_SINIRI = 95
 # Okuma onceligi: once urun gercegi, sonra mimari/karar, sonra ders.
-INDEX_KLASOR_SIRASI = ("domain", "architecture", "decisions", "pitfalls", "legacy", "historical")
+INDEX_KLASOR_SIRASI = ("facts", "decisions", "pitfalls")
 
 
 def _kisalt(metin: str, sinir: int = INDEX_ACIKLAMA_SINIRI) -> str:
@@ -502,7 +504,8 @@ def _kisalt(metin: str, sinir: int = INDEX_ACIKLAMA_SINIRI) -> str:
     return (kesik or metin[:sinir]) + "…"
 
 
-def index_govde(veri: dict, hafiza: Path, tum: bool = False) -> str:
+def index_govde(veri: dict, hafiza: Path, tum: bool = False,
+                aciklama_siniri: int = INDEX_ACIKLAMA_SINIRI) -> str:
     """Rol filtresine gore not haritasi (markdown). Deterministik: notlari_gez
     yol sirali, klasor sirasi sabit."""
     kapsam = repo_kapsami(veri)
@@ -514,7 +517,7 @@ def index_govde(veri: dict, hafiza: Path, tum: bool = False) -> str:
         if not tum and not gorunur(fm, kapsam):
             continue
         grup, ad = goreli.parts[0], "/".join(goreli.parts[1:])
-        gruplar.setdefault(grup, []).append(f"- `{ad}` — {_kisalt(fm.get('description', ''))}")
+        gruplar.setdefault(grup, []).append(f"- `{ad}` — {_kisalt(fm.get('description', ''), aciklama_siniri)}")
         sayi += 1
 
     hafiza_adi = Path(str(veri.get("memory_path", hafiza))).name
@@ -532,6 +535,34 @@ def index_govde(veri: dict, hafiza: Path, tum: bool = False) -> str:
     for grup in sirali:
         satirlar += ["", f"**{grup}/**", *gruplar[grup]]
     return "\n".join(satirlar)
+
+
+# Kancayla ENJEKTE edilen harita icin karakter tavani. Dosyaya yazilan blok
+# tavansizdir: dosya istege bagli okunur, enjeksiyon ise her oturumun bagalamini
+# yer.
+#
+# Tavan asilinca NOT DUSURULMEZ — aciklama kisaltilir. Not dusurmek sessiz
+# kapsam kaybidir: harita "hepsi bu" diye okunur ve gorunmeyen not hic aranmaz.
+# Aciklama kisalinca satir hala orada durur ve ajan notu acabilir.
+INDEX_BUTCE = 16000
+_INDEX_ACIKLAMA_KADEMELERI = (INDEX_ACIKLAMA_SINIRI, 80, 55, 35)
+
+
+def index_govde_butceli(veri: dict, hafiza: Path, butce: int = INDEX_BUTCE) -> str:
+    """Haritayi tavana sigdirir: once tam, sonra giderek kisa aciklamayla."""
+    govde = index_govde(veri, hafiza)
+    if butce <= 0 or len(govde) <= butce:
+        return govde
+    for sinir in _INDEX_ACIKLAMA_KADEMELERI[1:]:
+        govde = index_govde(veri, hafiza, aciklama_siniri=sinir)
+        if len(govde) <= butce:
+            uyari = ("[not: harita tavana sigsin diye aciklamalar "
+                     + str(sinir) + " karaktere kisaltildi — "
+                     "tam metin notun kendisindedir]")
+            return govde + NL + NL + uyari
+    uyari = ("[not: harita EN KISA bicimde bile tavani asiyor; "
+             "korpus bolunmeli — `ctx doctor`]")
+    return govde + NL + NL + uyari
 
 
 def _index_hedefleri(manifest: Path, veri: dict) -> list[Path]:
@@ -671,11 +702,104 @@ def komut_index(args) -> int:
 # Seviye ayrimi onemli: 90 gunluk not STALE DEGILDIR, yalnizca REVIEW-DUE'dur.
 # Gercek stale tespiti makine-dogrulanabilir anchor'larla yapilir (henuz yok).
 
-ZORUNLU_ALANLAR = ("title", "description", "type", "updated")
+ZORUNLU_ALANLAR = ("title", "description", "updated")
 REVIEW_GUN = 90
 
 _MD_LINK = re.compile(r"\[[^\]]*\]\(([^)#]+?)(?:#[^)]*)?\)")
 _WIKI_LINK = re.compile(r"\[\[([^\]|]+)")
+
+
+def _task_arsiv_mi(fm: dict) -> bool:
+    """Task frontmatter'inin acik is mi, arsiv kaydi mi oldugunu soyler.
+
+    Eski task dosyalarinin bir kismi frontmatter'sizdir; bunlar acik kabul
+    edilir ve OPEN.md'de bulunmalidir. `status: open` de eski ama yaygin bir
+    task yazimidir; active ile ayni anlama gelir.
+    """
+    status = str(fm.get("status") or "").strip()
+    lifecycle = str(fm.get("lifecycle") or "").strip()
+    return status in {"archived", "closed", "done"} or lifecycle == "historical"
+
+
+# Kapanmis maddenin AKTIF task dosyasinda birakilmasi, bir sonraki oturumda ayni
+# isin yeniden alinmasina yol acar. Evrensel sinyal isaretlenmis onay kutusudur
+# (`- [x]`); projeye ozgu sozcukler (orn. "KAPANDI", "OK") hafizanin kendi
+# ctx.yaml'indaki `closed_markers` listesinden gelir — arac projenin dilini
+# varsaymaz. Muafiyet: satirda `ctx:acik` gecerse bulgu uretilmez (kapanis
+# bicimini ANLATAN prose icin).
+_ONAY_KUTUSU = re.compile(r"^\s*[-*+]\s*\[[xX]\]")
+_KAPANIS_MUAFIYETI = "ctx:acik"
+_KAPANIS_BULGU_TAVANI = 5
+
+
+def _kapanis_satirlari(metin: str, ek_isaretler: list[str]) -> list[tuple[int, str]]:
+    """Aktif bir task dosyasinda kapanmis gorunen satirlari dondurur."""
+    bulunan: list[tuple[int, str]] = []
+    for no, satir in enumerate(metin.splitlines(), 1):
+        if _KAPANIS_MUAFIYETI in satir:
+            continue
+        if _ONAY_KUTUSU.match(satir) or any(i and i in satir for i in ek_isaretler):
+            bulunan.append((no, satir.strip()[:60]))
+    return bulunan
+
+
+def _task_durumunu_dogrula(hafiza: Path) -> list[tuple[str, str, str]]:
+    """tasks/ ile OPEN.md'nin ayni acik isleri gosterdigini denetler.
+
+    `tasks/` ve `sessions/` genel not taramasindan bilerek atlanir; bu kontrol
+    onlarin yapisal durum kapisidir. Aktif/current task dosyasi OPEN.md'de
+    listelenmeli, arsiv task listelenmemelidir. OPEN icindeki tum yerel .md
+    linkleri de mevcut hedefe gitmelidir.
+    """
+    tasks = hafiza / "tasks"
+    acik = tasks / "OPEN.md"
+    ek_isaretler = _liste(hafiza_ayarlari(hafiza).get("closed_markers"))
+    bulgular: list[tuple[str, str, str]] = []
+    if not acik.is_file():
+        return [("hata", "tasks/OPEN.md", "acik is indeksi yok")]
+
+    metin = acik.read_text(encoding="utf-8", errors="replace")
+    tasks_koku = tasks.resolve()
+    listelenen: set[str] = set()
+    for hedef in _MD_LINK.findall(metin):
+        h = hedef.strip()
+        if h.startswith(("http://", "https://", "mailto:")) or not h.endswith(".md"):
+            continue
+        hedef_yolu = (acik.parent / h).resolve()
+        if not hedef_yolu.exists():
+            bulgular.append(("hata", "tasks/OPEN.md", f"kirik task linki: {h}"))
+            continue
+        try:
+            goreli = hedef_yolu.relative_to(tasks_koku).as_posix()
+        except ValueError:
+            continue  # karar/domain gibi tasks disi yerel linkler indeks degildir
+        if goreli != "OPEN.md":
+            listelenen.add(goreli)
+
+    if not tasks.is_dir():
+        return bulgular
+    for p in sorted(tasks.rglob("*.md")):
+        if p.resolve() == acik.resolve():
+            continue
+        goreli = p.relative_to(tasks).as_posix()
+        fm = frontmatter(p.read_text(encoding="utf-8", errors="replace"))
+        if _task_arsiv_mi(fm):
+            if goreli in listelenen:
+                bulgular.append(("hata", f"tasks/{goreli}",
+                                 "arsiv task OPEN.md'de listeleniyor; satiri sil"))
+        elif goreli not in listelenen:
+            bulgular.append(("hata", f"tasks/{goreli}",
+                             "aktif task OPEN.md'de listelenmiyor"))
+        if not _task_arsiv_mi(fm):
+            metin_dosya = p.read_text(encoding="utf-8", errors="replace")
+            kapanmis = _kapanis_satirlari(metin_dosya, ek_isaretler)
+            for no, ozet in kapanmis[:_KAPANIS_BULGU_TAVANI]:
+                bulgular.append(("hata", f"tasks/{goreli}:{no}",
+                                 f"kapanmis madde aktif task dosyasinda duruyor; SIL: {ozet}"))
+            if len(kapanmis) > _KAPANIS_BULGU_TAVANI:
+                bulgular.append(("hata", f"tasks/{goreli}",
+                                 f"{len(kapanmis) - _KAPANIS_BULGU_TAVANI} kapanmis madde daha var"))
+    return bulgular
 
 # Deger ATANMIS gizli anahtar. Yalniz adin gecmesi bulgu DEGILDIR — SPEC'in
 # onerdigi "ADMIN_SECRET ister, degeri disarida yasar" bicimi mesru.
@@ -796,6 +920,7 @@ def dogrula(hafiza: Path, tam: bool = False) -> list[tuple[str, str, str]]:
     except ValueError:
         review_gun = REVIEW_GUN
     bulgular: list[tuple[str, str, str]] = []
+    bulgular.extend(_task_durumunu_dogrula(hafiza))
     notlar = list(notlari_gez(hafiza))
     stemler = {p.stem for p, _ in notlar}
     basliklar: dict[str, str] = {}
@@ -1132,7 +1257,7 @@ def _hook_index(args) -> int:
     if not hafiza.is_dir():
         return 0
 
-    harita = index_govde(veri, hafiza).strip()
+    harita = index_govde_butceli(veri, hafiza).strip()
     if not harita:
         return 0
 
@@ -1169,9 +1294,21 @@ def _hook_capture_check(args) -> int:
     if not uyari:
         return 0
 
+    ek = ""
+    try:
+        _m, _v, _h = baglam_yukle(args.repo)
+        bekleyen = _bekleyen_dokumler(_h)
+        if bekleyen:
+            adlar = "\n".join(f"  - {FLUSH_DIZINI}/{b.name}" for b in bekleyen[-3:])
+            ek = ("\n\nO oturumun HAM DOKUMU kancayla kaydedildi (okumak icin ac, "
+                  f"hepsini birden yukleme):\n{adlar}\n"
+                  "Bulguyu nota tasidiktan sonra dokum dosyasini SIL.")
+    except (Exception, SystemExit):
+        pass
+
     print(_hook_zarf(
         "CAPTURE KARARI BEKLIYOR — onceki oturum kalici bulgu karari "
-        "verilmeden kapanmis:\n\n" + uyari + "\n\n"
+        "verilmeden kapanmis:\n\n" + uyari + ek + "\n\n"
         "Bu oturumun SONUNDA karar ver: kalici bir bulgu varsa once "
         "hafizaya yaz, sonra `ctx close --not <yol>`; "
         "yoksa `ctx close --yok \"gerekce\"`. Karar VERMEMEK gecersizdir. "
@@ -1179,10 +1316,240 @@ def _hook_capture_check(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- flush
+#
+# Oturum kapanisini DISIPLINE degil MEKANIZMAYA baglar: model "yazmayi
+# hatirlamak" zorunda kalmaz, kanca transcript'i okur ve ham dokumu
+# `sessions/.pending/` altina birakir. Bir sonraki oturumun `capture-check`i
+# bu dosyayi yuzeye cikarir; notu yazan yine LIDER AJANDIR.
+#
+# Neden MODEL CAGRILMIYOR: kapanis kancasi butun araclarda saniyeler icinde
+# donmek zorundadir; arka planda `claude -p` cagirmak (a) kota yakar,
+# (b) ayni vault'un kancalarini tetikleyip ozyinelemeye girer, (c) baska bir
+# saglayicida (Codex/Hermes) karsiligi yoktur. Ham dokum bedava ve deterministik;
+# ozetlemeyi bir sonraki oturum ZATEN acik olan baglamiyla yapar.
+#
+# PII: transcript gercek ad/adres tasiyabilir. `.pending/` GITIGNORE'ludur ve
+# makine-yereldir; hafiza reposuna asla commit edilmez.
+
+FLUSH_DIZINI = "sessions/.pending"
+FLUSH_TUR_TAVANI = 40
+FLUSH_KARAKTER_TAVANI = 12000
+FLUSH_ASGARI_TUR = 2
+# Kanca kendi tetikledigi bir surecin icinden tekrar kosmasin.
+FLUSH_OZYINELEME = "CTX_HOOK_ICINDE"
+
+
+# Metin blogunun adi saglayiciya gore degisir; olculdu 2026-08-28: Claude
+# `text`, Codex `input_text`/`output_text` yaziyor. Yalniz `text` arayan okuyucu
+# Codex dokumunden SIFIR tur cikardi ve sessizce hicbir sey yazmadi.
+_METIN_BLOKLARI = {"text", "input_text", "output_text"}
+
+
+def _metin_topla(icerik) -> str:
+    """Mesaj govdesinden yalniz DUZ METNI cikarir.
+
+    Tool cagrisi, tool sonucu ve dusunme bloklari atlanir: onlar konusmanin
+    kendisi degil, yurutmenin izidir — ozete girerlerse dokum sisip asil
+    konusmayi tavanin disina iter.
+    """
+    if isinstance(icerik, str):
+        return icerik.strip()
+    if not isinstance(icerik, list):
+        return ""
+    parcalar = []
+    for p in icerik:
+        if isinstance(p, str):
+            parcalar.append(p.strip())
+        elif isinstance(p, dict) and p.get("type") in _METIN_BLOKLARI:
+            parcalar.append(str(p.get("text", "")).strip())
+    return "\n".join(x for x in parcalar if x)
+
+
+def _turlar_claude(satirlar: list) -> list[tuple[str, str]]:
+    turlar = []
+    for d in satirlar:
+        if d.get("type") not in ("user", "assistant"):
+            continue
+        mesaj = d.get("message")
+        if not isinstance(mesaj, dict):
+            continue
+        metin = _metin_topla(mesaj.get("content"))
+        if metin:
+            turlar.append(("Kullanici" if d["type"] == "user" else "Ajan", metin))
+    return turlar
+
+
+def _turlar_codex(satirlar: list) -> list[tuple[str, str]]:
+    turlar = []
+    for d in satirlar:
+        if d.get("type") != "response_item":
+            continue
+        yuk = d.get("payload")
+        if not isinstance(yuk, dict) or yuk.get("type") != "message":
+            continue
+        rol = yuk.get("role")
+        if rol not in ("user", "assistant"):
+            continue
+        metin = _metin_topla(yuk.get("content"))
+        if metin:
+            turlar.append(("Kullanici" if rol == "user" else "Ajan", metin))
+    return turlar
+
+
+# Hermes oturumlari SQLite'ta yasar ve `hermes sessions export` ile JSONL'e
+# cikar; disari verilen bicim OpenAI mesaj sekliyle aynidir, o yuzden Codex
+# okuyucusu ayni ise yarar. Ayri bir SQLite ayristiricisi YAZILMAZ.
+_TRANSCRIPT_OKUYUCULARI = {
+    "claude": _turlar_claude,
+    "codex": _turlar_codex,
+    "hermes": _turlar_codex,
+}
+
+
+def _jsonl_oku(yol: Path) -> list:
+    satirlar = []
+    with yol.open(encoding="utf-8", errors="replace") as f:
+        for satir in f:
+            satir = satir.strip()
+            if not satir:
+                continue
+            try:
+                satirlar.append(json.loads(satir))
+            except Exception:
+                continue
+    return satirlar
+
+
+def _dokum_govdesi(turlar: list[tuple[str, str]]) -> str:
+    """Son turlari tavana sigacak sekilde, TUR SINIRINDAN keserek birlestirir.
+
+    Karakter tavani ortasindan kesmek konusmayi yalanci yapar (yarim cumle
+    baska bir sey soyler); bu yuzden kesme daima tur sinirindadir.
+    """
+    secili = turlar[-FLUSH_TUR_TAVANI:]
+    bloklar, toplam = [], 0
+    for kim, metin in reversed(secili):
+        blok = f"**{kim}:** {metin}"
+        if toplam + len(blok) > FLUSH_KARAKTER_TAVANI and bloklar:
+            break
+        bloklar.append(blok)
+        toplam += len(blok)
+    return "\n\n".join(reversed(bloklar))
+
+
+def _hermes_disari_ver(oturum_id: str):
+    """Hermes oturumunu gecici bir JSONL'e cikarir; basarisizsa None.
+
+    Hermes oturumlari SQLite'ta yasar ve kanca yalniz `session_id` verir.
+    Disari verme aracin KENDI desteklenen arayuzudur, bu yuzden SQLite semasi
+    ayristirilmaz — sema degisince sessizce bozulurdu. `--redact` PII'yi
+    kaynakta temizler.
+    """
+    import shutil
+    import tempfile
+
+    ikili = shutil.which("hermes")
+    if not ikili:
+        return None
+    hedef = Path(tempfile.gettempdir()) / f"ctx-hermes-{oturum_id}.jsonl"
+    try:
+        sonuc = subprocess.run(
+            [ikili, "sessions", "export", "--format", "jsonl",
+             "--session-id", oturum_id, "--redact", "--yes", str(hedef)],
+            capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if sonuc.returncode != 0 or not hedef.is_file():
+        return None
+    return str(hedef)
+
+
+def _hook_flush(args) -> int:
+    import os
+    from datetime import datetime
+
+    if os.environ.get(FLUSH_OZYINELEME):
+        return 0
+    # Claude Code / Hermes kancalari oturum bilgisini STDIN'den JSON olarak
+    # verir; `--transcript` yalnizca elle cagri ve test icindir. Stdin bos ya da
+    # bozuksa sessizce cikilir — kanca oturumu ASLA bozmaz.
+    yol = args.transcript
+    gecici = None
+    if not yol and not sys.stdin.isatty():
+        try:
+            veri_stdin = json.loads(sys.stdin.read() or "{}")
+        except Exception:
+            veri_stdin = {}
+        yol = veri_stdin.get("transcript_path") or veri_stdin.get("transcript")
+        # Hermes dosya yolu VERMEZ, `session_id` verir; oturum SQLite'ta yasar.
+        # Disari verme aracin kendi desteklenen arayuzudur (`sessions export`),
+        # bu yuzden SQLite ayristirilmaz. `--redact` PII'yi kaynakta temizler.
+        if not yol and args.arac == "hermes" and veri_stdin.get("session_id"):
+            yol = gecici = _hermes_disari_ver(str(veri_stdin["session_id"]))
+    if not yol:
+        return 0
+    kaynak = Path(yol)
+    if not kaynak.is_file():
+        return 0
+
+    okuyucu = _TRANSCRIPT_OKUYUCULARI.get(args.arac or "claude")
+    if okuyucu is None:
+        return 0
+    turlar = okuyucu(_jsonl_oku(kaynak))
+    if len(turlar) < FLUSH_ASGARI_TUR:
+        return 0   # ozetlenecek kadar konusma yok — DOGRU davranis, hata degil
+
+    manifest = manifest_bul(Path(args.repo) if args.repo else Path.cwd())
+    if manifest is None:
+        return 0
+    veri = manifest_oku(manifest)
+    mp = veri.get("memory_path")
+    if not isinstance(mp, str):
+        return 0
+    hafiza = (manifest.parent / mp).resolve()
+    if not hafiza.is_dir():
+        return 0
+
+    dizin = hafiza / FLUSH_DIZINI
+    dizin.mkdir(parents=True, exist_ok=True)
+    # Ayni transcript ayni uzunlukta iki kez yazilmaz (SessionEnd + PreCompact
+    # arka arkaya tetiklenebilir).
+    imza = f"{kaynak.name}·{len(turlar)}"
+    for eski in dizin.glob("*.md"):
+        if imza in eski.read_text(encoding="utf-8", errors="replace")[:400]:
+            return 0
+
+    damga = datetime.now().strftime("%Y%m%d-%H%M%S")
+    hedef = dizin / f"{args.arac or 'claude'}-{damga}.md"
+    hedef.write_text(
+        f"<!-- ctx:flush imza={imza} sebep={args.sebep or 'sessionend'} -->\n"
+        f"# Kaydedilmemis oturum dokumu — {damga}\n\n"
+        f"Arac: `{args.arac or 'claude'}` · kaynak: `{kaynak.name}` · "
+        f"{len(turlar)} tur (son {min(len(turlar), FLUSH_TUR_TAVANI)} tanesi asagida).\n\n"
+        "Bu HAM dokumdur, not degildir. Kalici bulgu varsa uygun klasore yaz,\n"
+        "sonra `ctx close --not <yol>` calistir ve bu dosyayi SIL.\n\n---\n\n"
+        + _dokum_govdesi(turlar) + "\n",
+        encoding="utf-8")
+    if gecici:
+        try:
+            Path(gecici).unlink()
+        except OSError:
+            pass
+    return 0
+
+
+def _bekleyen_dokumler(hafiza: Path) -> list[Path]:
+    dizin = hafiza / FLUSH_DIZINI
+    return sorted(dizin.glob("*.md")) if dizin.is_dir() else []
+
+
 def komut_hook(args) -> int:
     try:
         if args.ad == "index":
             return _hook_index(args)
+        if args.ad == "flush":
+            return _hook_flush(args)
         return _hook_capture_check(args)
     except (Exception, SystemExit):
         # Kanca ASLA oturumu bozmaz. `SystemExit` ayrica yakalanir cunku
@@ -1325,8 +1692,7 @@ def komut_init(args) -> int:
     else:
         (hafiza / "tasks").mkdir(parents=True)
         (hafiza / "sessions").mkdir(parents=True)
-        for klasor in ("domain", "architecture", "decisions", "pitfalls",
-                       "legacy", "historical"):
+        for klasor in ("facts", "decisions", "pitfalls"):
             d = hafiza / klasor
             d.mkdir()
             (d / ".gitkeep").write_text("", encoding="utf-8")
@@ -1457,8 +1823,16 @@ def komut_migrate(args) -> int:
 # sarmalayicisini cagirir (bkz. `_ctx_sarmalayici`), ama eski kayit taninip
 # YERINDE guncellenmeli — aksi halde ayni kanca iki kez kosardi.
 HOOK_KAYITLARI = (
-    ("capture-check", "ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20),
-    ("index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20),
+    ("SessionStart", "capture-check", "ctx_capture_check.py",
+     "Capture karari kontrol ediliyor...", 20),
+    ("SessionStart", "index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20),
+    # Kapanis ve compaction: oturum dokumu diske dusurulur. Model hicbir sey
+    # hatirlamak zorunda degil — DISIPLIN degil MEKANIZMA. Transcript yolu
+    # stdin'den gelir; komut model CAGIRMAZ, o yuzden kisa surer.
+    ("SessionEnd", "flush --arac claude --sebep sessionend", None,
+     "Oturum dokumu kaydediliyor...", 15),
+    ("PreCompact", "flush --arac claude --sebep precompact", None,
+     "Oturum dokumu kaydediliyor...", 15),
 )
 
 
@@ -1500,21 +1874,23 @@ def hook_kur(yaz: bool = True) -> list[str]:
         rapor.append(f"! settings.json okunamadi ({e}) — hook KAYDEDILMEDI, elle ekleyin")
         return rapor
 
-    kancalar = ayarlar.setdefault("hooks", {}).setdefault("SessionStart", [])
-    if not kancalar:
-        kancalar.append({"hooks": []})
-    liste = kancalar[0].setdefault("hooks", [])
-
     degisti = False
-    for ad, eski_script, mesaj, sure in HOOK_KAYITLARI:
+    for olay, ad, eski_script, mesaj, sure in HOOK_KAYITLARI:
+        kancalar = ayarlar.setdefault("hooks", {}).setdefault(olay, [])
+        if not kancalar:
+            kancalar.append({"hooks": []})
+        liste = kancalar[0].setdefault("hooks", [])
         istenen = _hook_komutu(ad)
         # Kaydin BIZIM olup olmadigi iki isaretten anlasilir: yeni bicim
         # (`hook <ad>`) ya da eski script adi. Ikincisi olmadan gecis kaydi
-        # taninmaz ve ayni kanca iki kez kosardi.
+        # taninmaz ve ayni kanca iki kez kosardi. Eslesme hook ADININ ILK
+        # SOZCUGUNE bakar; bayraklar (`--arac ...`) sonradan degisebilir ve
+        # degisince kayit YERINDE guncellenmeli, ikinci kez EKLENMEMELI.
+        kok = ad.split()[0]
         girdi = next(
             (k for k in liste
-             if eski_script in str(k.get("command", ""))
-             or f"hook {ad}" in str(k.get("command", ""))),
+             if (eski_script and eski_script in str(k.get("command", "")))
+             or f"hook {kok}" in str(k.get("command", ""))),
             None,
         )
         if girdi is None:
@@ -1526,14 +1902,14 @@ def hook_kur(yaz: bool = True) -> list[str]:
                 "statusMessage": mesaj,
             })
             degisti = True
-            rapor.append(f"+ settings.json: {ad} eklendi")
+            rapor.append(f"+ settings.json[{olay}]: {kok} eklendi")
         elif str(girdi.get("command", "")) != istenen:
             # YERINDE guncelleme: kullanicinin sirasi ve diger alanlari korunur.
             girdi["command"] = istenen
             degisti = True
-            rapor.append(f"↻ settings.json: {ad} → `ctx hook {ad}` olarak guncellendi")
+            rapor.append(f"↻ settings.json[{olay}]: {kok} guncellendi")
         else:
-            rapor.append(f"= settings.json: {ad} kayitli")
+            rapor.append(f"= settings.json[{olay}]: {kok} kayitli")
 
     if degisti and yaz:
         ayar_yolu.write_text(json.dumps(ayarlar, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1692,8 +2068,12 @@ def main() -> int:
     mg.add_argument("--kuru", action="store_true", help="hicbir sey yazma, ne yapacagini goster")
     mg.set_defaults(fn=komut_migrate)
 
-    hk = alt.add_parser("hook", help="SessionStart kancalari (harness cagirir)")
-    hk.add_argument("ad", choices=["index", "capture-check"])
+    hk = alt.add_parser("hook", help="oturum kancalari (harness cagirir)")
+    hk.add_argument("ad", choices=["index", "capture-check", "flush"])
+    hk.add_argument("--transcript", help="[flush] okunacak oturum dokumu (JSONL)")
+    hk.add_argument("--arac", choices=["claude", "codex", "hermes"],
+                    help="[flush] dokumu yazan arac (varsayilan: claude)")
+    hk.add_argument("--sebep", help="[flush] sessionend | precompact")
     hk.add_argument("--repo")
     hk.set_defaults(fn=komut_hook)
 

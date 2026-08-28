@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 
 	"github.com/Xeressa7/agent-context/go/internal/jsonx"
@@ -46,7 +47,7 @@ func HookIndex(env Env, repo string) int {
 	if err != nil {
 		return 0 // no memory in this project: silence
 	}
-	body, err := IndexBody(ctx, false)
+	body, err := IndexBodyBudgeted(ctx, indexBudget)
 	if err != nil {
 		return 0
 	}
@@ -89,9 +90,25 @@ func HookCaptureCheck(env Env, repo string) int {
 		return 0
 	}
 
+	extra := ""
+	if ctx, ctxErr := store.LoadContext(repo); ctxErr == nil {
+		if pending := pendingDigests(ctx.MemoryPath); len(pending) > 0 {
+			if len(pending) > 3 {
+				pending = pending[len(pending)-3:]
+			}
+			var names []string
+			for _, p := range pending {
+				names = append(names, "  - "+flushDir+"/"+filepath.Base(p))
+			}
+			extra = "\n\nO oturumun HAM DOKUMU kancayla kaydedildi (okumak icin ac, " +
+				"hepsini birden yukleme):\n" + strings.Join(names, "\n") + "\n" +
+				"Bulguyu nota tasidiktan sonra dokum dosyasini SIL."
+		}
+	}
+
 	out, err := hookOutput(
 		"CAPTURE KARARI BEKLIYOR — onceki oturum kalici bulgu karari " +
-			"verilmeden kapanmis:\n\n" + warning + "\n\n" +
+			"verilmeden kapanmis:\n\n" + warning + extra + "\n\n" +
 			"Bu oturumun SONUNDA karar ver: kalici bir bulgu varsa once " +
 			"hafizaya yaz, sonra `ctx close --not <yol>`; " +
 			"yoksa `ctx close --yok \"gerekce\"`. Karar VERMEMEK gecersizdir. " +

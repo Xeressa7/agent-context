@@ -26,7 +26,7 @@ import (
 // The level split matters: a 90-day-old note is NOT stale, it is REVIEW-DUE.
 // Real staleness needs machine-checkable anchors, which do not exist yet.
 
-var requiredFields = []string{"title", "description", "type", "updated"}
+var requiredFields = []string{"title", "description", "updated"}
 
 const defaultReviewDays = 90
 
@@ -40,6 +40,142 @@ var (
 	secretPattern = regexp.MustCompile(
 		`(?i)\b(api[_-]?key|secret|token|password|passwd|pwd)\b\s*[:=]\s*['"]?([A-Za-z0-9+/=_.-]{16,})`)
 )
+
+func taskArchived(fm map[string]string) bool {
+	status := strings.TrimSpace(fm["status"])
+	lifecycle := strings.TrimSpace(fm["lifecycle"])
+	return status == core.StatusArchived || status == "closed" || status == "done" || lifecycle == "historical"
+}
+
+// A closed item left inside an ACTIVE task file is how the next session takes
+// the same work twice. The universal signal is a ticked checkbox (`- [x]`);
+// project-specific words ("KAPANDI", "DONE") come from the memory's own
+// ctx.yaml `closed_markers` list, because the tool does not assume the
+// project's language. A line carrying `ctx:acik` is exempt, for prose that
+// DESCRIBES the closing format instead of being a closed item.
+var checkedBoxPattern = regexp.MustCompile(`^\s*[-*+]\s*\[[xX]\]`)
+
+const (
+	openItemExemption = "ctx:acik"
+	closedFindingCap  = 5
+)
+
+func closedItemLines(text string, extraMarkers []string) [][2]string {
+	var out [][2]string
+	for i, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.Contains(line, openItemExemption) {
+			continue
+		}
+		hit := checkedBoxPattern.MatchString(line)
+		for _, m := range extraMarkers {
+			if m != "" && strings.Contains(line, m) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			continue
+		}
+		// KARAKTER sayar, bayt degil: Python surumu de oyle yapar ve Turkce
+		// metinde bayt kirpmasi iki implementasyonu sessizce ayristirir.
+		summary := strings.TrimSpace(line)
+		if r := []rune(summary); len(r) > 60 {
+			summary = string(r[:60])
+		}
+		out = append(out, [2]string{itoa(i + 1), summary})
+	}
+	return out
+}
+
+// taskStateFindings is the structural gate for the state files that the note
+// walker intentionally skips. Every active/current task file must be reachable
+// from tasks/OPEN.md; archived task files must not remain in that index. Local
+// markdown links in OPEN.md must also resolve, otherwise a closed task can
+// silently remain as a dead row.
+func taskStateFindings(memory string) []Finding {
+	tasksDir := filepath.Join(memory, "tasks")
+	openPath := filepath.Join(tasksDir, "OPEN.md")
+	var findings []Finding
+	if _, err := os.Stat(openPath); err != nil {
+		return []Finding{{Level: "hata", Path: "tasks/OPEN.md", Msg: "acik is indeksi yok"}}
+	}
+	raw, err := os.ReadFile(openPath)
+	if err != nil {
+		return []Finding{{Level: "hata", Path: "tasks/OPEN.md", Msg: "acik is indeksi okunamadi"}}
+	}
+	tasksRoot, _ := filepath.Abs(tasksDir)
+	extraMarkers := store.MemoryConfig(memory).List("closed_markers")
+	listed := map[string]bool{}
+	for _, match := range mdLinkPattern.FindAllStringSubmatch(string(raw), -1) {
+		target := strings.TrimSpace(match[1])
+		if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
+			strings.HasPrefix(target, "mailto:") || !strings.HasSuffix(target, ".md") {
+			continue
+		}
+		resolved, _ := filepath.Abs(filepath.Join(tasksDir, filepath.FromSlash(target)))
+		if _, err := os.Stat(resolved); err != nil {
+			findings = append(findings, Finding{Level: "hata", Path: "tasks/OPEN.md", Msg: "kirik task linki: " + target})
+			continue
+		}
+		rel, err := filepath.Rel(tasksRoot, resolved)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue // decisions/domain gibi tasks disi yerel linkler indeks degildir
+		}
+		rel = filepath.ToSlash(rel)
+		if rel != "OPEN.md" {
+			listed[rel] = true
+		}
+	}
+
+	err = filepath.WalkDir(tasksDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(path), ".md") {
+			return nil
+		}
+		if filepath.Clean(path) == filepath.Clean(openPath) {
+			return nil
+		}
+		rel, relErr := filepath.Rel(tasksRoot, path)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
+		text, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		fm := core.ParseFrontMatter(string(text))
+		if taskArchived(fm) {
+			if listed[rel] {
+				findings = append(findings, Finding{Level: "hata", Path: "tasks/" + rel,
+					Msg: "arsiv task OPEN.md'de listeleniyor; satiri sil"})
+			}
+		} else if !listed[rel] {
+			findings = append(findings, Finding{Level: "hata", Path: "tasks/" + rel,
+				Msg: "aktif task OPEN.md'de listelenmiyor"})
+		}
+		if !taskArchived(fm) {
+			closed := closedItemLines(string(text), extraMarkers)
+			for i, c := range closed {
+				if i >= closedFindingCap {
+					findings = append(findings, Finding{Level: "hata", Path: "tasks/" + rel,
+						Msg: itoa(len(closed)-closedFindingCap) + " kapanmis madde daha var"})
+					break
+				}
+				findings = append(findings, Finding{Level: "hata", Path: "tasks/" + rel + ":" + c[0],
+					Msg: "kapanmis madde aktif task dosyasinda duruyor; SIL: " + c[1]})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		findings = append(findings, Finding{Level: "hata", Path: "tasks", Msg: "task dizini okunamadi"})
+	}
+	return findings
+}
 
 // Finding is one validation result.
 type Finding struct {
@@ -162,7 +298,7 @@ func Check(memory string, full bool) ([]Finding, error) {
 	titles := map[string]string{}
 	today := time.Now()
 
-	var findings []Finding
+	findings := taskStateFindings(memory)
 	for _, n := range notes {
 		path := n.Rel
 		add := func(level, msg string) { findings = append(findings, Finding{level, path, msg}) }

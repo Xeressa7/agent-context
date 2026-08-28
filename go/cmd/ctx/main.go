@@ -27,7 +27,7 @@ Kullanim:
   ctx init <proje> [--memory-path YOL] [--role current|legacy] [--components LISTE]
   ctx migrate [--repo YOL] [--kuru]
   ctx bootstrap --proje AD [--memory-path YOL] [--role ...] [--components ...] [--kuru]
-  ctx hook index | capture-check      (SessionStart kancalari — harness cagirir)
+  ctx hook index | capture-check | flush  (oturum kancalari — harness cagirir)
 
 Butun komutlar Go'da.
 `
@@ -37,7 +37,7 @@ func main() {
 }
 
 func run(args []string) int {
-	env := cli.Env{Out: os.Stdout, Err: os.Stderr}
+	env := cli.Env{Out: os.Stdout, Err: os.Stderr, In: os.Stdin}
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2
@@ -272,14 +272,17 @@ func runBootstrap(env cli.Env, args []string) int {
 func runHook(env cli.Env, args []string) int {
 	fs := flag.NewFlagSet("hook", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	var repo string
+	var repo, transcript, tool, reason string
 	fs.StringVar(&repo, "repo", "", "manifest aramasinin baslayacagi dizin")
+	fs.StringVar(&transcript, "transcript", "", "[flush] okunacak oturum dokumu (JSONL)")
+	fs.StringVar(&tool, "arac", "", "[flush] claude | codex | hermes")
+	fs.StringVar(&reason, "sebep", "", "[flush] sessionend | precompact")
 	flags, rest := reorder(fs, args)
 	if err := fs.Parse(flags); err != nil {
 		return 2
 	}
 	if len(rest) == 0 {
-		fmt.Fprint(os.Stderr, "HATA: hook adi verilmedi (index | capture-check).\n")
+		fmt.Fprint(os.Stderr, "HATA: hook adi verilmedi (index | capture-check | flush).\n")
 		return 2
 	}
 	switch rest[0] {
@@ -287,6 +290,9 @@ func runHook(env cli.Env, args []string) int {
 		return cli.HookIndex(env, repo)
 	case "capture-check":
 		return cli.HookCaptureCheck(env, repo)
+	case "flush":
+		return cli.HookFlush(env, cli.FlushOptions{
+			Repo: repo, Transcript: transcript, Tool: tool, Reason: reason})
 	default:
 		fmt.Fprintf(os.Stderr, "HATA: bilinmeyen hook: %s\n", rest[0])
 		return 2

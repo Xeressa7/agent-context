@@ -60,7 +60,7 @@ def parite_hafizasi(tmp_path_factory):
     kok = tmp_path_factory.mktemp("parite")
     proje, hafiza = kok / "proje", kok / "mem"
     (proje / "src" / "derin").mkdir(parents=True)
-    for d in ("domain", "pitfalls", "gecis", "tasks", "sessions"):
+    for d in ("facts", "pitfalls", "gecis", "tasks", "sessions"):
         (hafiza / d).mkdir(parents=True)
 
     (proje / "context.yaml").write_text(
@@ -70,21 +70,26 @@ def parite_hafizasi(tmp_path_factory):
     (hafiza / "ctx.yaml").write_text("skip_dirs: [gecis]\npii_profiles: [tr]\n",
                                      encoding="utf-8")
     (hafiza / "README.md").write_text("kok dosyasi — not degil\n", encoding="utf-8")
-    (hafiza / "tasks" / "OPEN.md").write_text("acik isler\n", encoding="utf-8")
+    (hafiza / "tasks" / "OPEN.md").write_text(
+        "acik isler\n- [Fatura task](billing-task.md)\n", encoding="utf-8")
     (hafiza / "sessions" / "CURRENT.md").write_text("oturum\n", encoding="utf-8")
+    (hafiza / "tasks" / "billing-task.md").write_text(
+        "---\ntitle: Fatura task\ndescription: Acik fatura isi\n"
+        "type: task\nstatus: active\nupdated: 2026-08-13\n---\n\n"
+        "Fatura isi.\n", encoding="utf-8")
 
-    (hafiza / "domain" / "billing.md").write_text(
+    (hafiza / "facts" / "billing.md").write_text(
         '---\ntitle: "Fatura akışı"\n'
         "description: Fatura ↔ hakediş eşlemesi ve kesinti kalemleri\n"
         "type: domain\nupdated: 2026-08-01\nscope: [current]\n"
         "tags: fatura, hakedis\n---\n\n"
         "Gövdede `distinct_lab_names` geçiyor ve İstanbul şubesi.\n",
         encoding="utf-8")
-    (hafiza / "domain" / "arsivli.md").write_text(
+    (hafiza / "facts" / "arsivli.md").write_text(
         "---\ntitle: Arsivli not\ndescription: Arsivlenmis fatura notu\n"
         "type: domain\nupdated: 2025-01-01\nstatus: archived\n---\n\n"
         "Fatura hakkinda eski bilgi.\n", encoding="utf-8")
-    (hafiza / "domain" / "eski-eksen.md").write_text(
+    (hafiza / "facts" / "eski-eksen.md").write_text(
         "---\ntitle: Eski eksen\ndescription: Legacy kapsamli fatura notu\n"
         "type: domain\nupdated: 2026-01-01\nlifecycle: legacy\n---\n\n"
         "Fatura ve legacy.\n", encoding="utf-8")
@@ -214,7 +219,7 @@ def bozuk_hafiza(tmp_path_factory):
     kok = tmp_path_factory.mktemp("bozuk")
     proje, hafiza = kok / "proje", kok / "mem"
     proje.mkdir()
-    for d in ("domain", "pitfalls", "tasks", "sessions"):
+    for d in ("facts", "pitfalls", "tasks", "sessions"):
         (hafiza / d).mkdir(parents=True)
     (proje / "context.yaml").write_text(
         "version: 1\nproject: bozuk\nmemory_path: ../mem\nscope: [current]\n", encoding="utf-8")
@@ -226,24 +231,24 @@ def bozuk_hafiza(tmp_path_factory):
     (hafiza / "sessions" / "CURRENT.md").write_text("x\n", encoding="utf-8")
 
     y = lambda ad, metin: (hafiza / ad).write_text(metin, encoding="utf-8")
-    y("domain/a-frontmatter-yok.md", "frontmatter yok bu notta\n")
-    y("domain/b-gecersiz-lifecycle.md",
+    y("facts/a-frontmatter-yok.md", "frontmatter yok bu notta\n")
+    y("facts/b-gecersiz-lifecycle.md",
       "---\nlifecycle: uydurma\ntitle: B\n---\n\ngovde\n")
-    y("domain/c-eski-lifecycle.md",
+    y("facts/c-eski-lifecycle.md",
       "---\nlifecycle: current\ntitle: C\ndescription: D\ntype: domain\n"
       "updated: 2026-08-01\n---\n\ngovde\n")
     # Tirnak iceren deger: mesajlar Python repr() ile uretiliyor.
-    y("domain/d-gecersiz-status.md",
+    y("facts/d-gecersiz-status.md",
       "---\nstatus: yarim\ntitle: D'li baslik\ndescription: D\ntype: domain\n"
       "updated: 2020-01-01\n---\n\ngovde\n")
-    y("domain/e-linkler.md",
+    y("facts/e-linkler.md",
       "---\ntitle: C\ndescription: D\ntype: domain\nupdated: 2026-08-13\n"
-      "superseded_by: domain/olmayan.md\n---\n\n"
+      "superseded_by: facts/olmayan.md\n---\n\n"
       "[link](./yok.md) ve [dis](https://a.b/c.md) ve [[cozumlenmez]] "
       "ve [[c-eski-lifecycle]]\n")
-    y("domain/f-tarih.md",
+    y("facts/f-tarih.md",
       "---\ntitle: F\ndescription: D\ntype: domain\nupdated: dun\n---\n\ngovde\n")
-    y("domain/i-review-due.md",
+    y("facts/i-review-due.md",
       "---\ntitle: Bayat\ndescription: D\ntype: domain\nupdated: 2026-01-01\n---\n\ngovde\n")
     # PII: gercek olanlar YAKALANMALI, saglama toplamindan gecmeyen sahte kart
     # (yil dizisi) ve degeri olmayan ADMIN_SECRET YAKALANMAMALI.
@@ -258,6 +263,9 @@ def bozuk_hafiza(tmp_path_factory):
     y("pitfalls/h-arsiv.md",
       "---\ntitle: H\ndescription: D\ntype: pitfall\nupdated: 2019-01-01\n"
       "status: archived\n---\n\ngovde\n")
+    y("tasks/unutulmus-brief.md",
+      "---\ntitle: Unutulmus brief\ndescription: D\ntype: task\n"
+      "status: active\nupdated: 2026-08-13\n---\n\nacik is.\n")
     return proje, hafiza
 
 
@@ -424,17 +432,17 @@ def cok_tuketici(tmp_path_factory):
     """
     kok = tmp_path_factory.mktemp("cok")
     hafiza = kok / "mem"
-    for d in ("domain", "tasks", "sessions"):
+    for d in ("facts", "tasks", "sessions"):
         (hafiza / d).mkdir(parents=True)
     (hafiza / "README.md").write_text("# h\n", encoding="utf-8")
     (hafiza / "tasks" / "OPEN.md").write_text("x\n", encoding="utf-8")
     (hafiza / "sessions" / "CURRENT.md").write_text("x\n", encoding="utf-8")
     (hafiza / "ctx.yaml").write_text(
         "consumers: [../a, ../b, ../c]\n", encoding="utf-8")
-    (hafiza / "domain" / "ortak.md").write_text(
+    (hafiza / "facts" / "ortak.md").write_text(
         "---\ntitle: Ortak\ndescription: Her kapsamda gecerli\ntype: domain\n"
         "updated: 2026-08-13\n---\n\ngovde\n", encoding="utf-8")
-    (hafiza / "domain" / "eski.md").write_text(
+    (hafiza / "facts" / "eski.md").write_text(
         "---\ntitle: Eski\ndescription: Yalniz legacy\ntype: domain\n"
         "updated: 2026-08-13\nscope: [legacy]\n---\n\ngovde\n", encoding="utf-8")
 
@@ -523,11 +531,11 @@ def test_close_tum_tuketicileri_tazeler_paritesi(go_ctx, cok_tuketici):
 
     kur()
     py_cikti, py_kod = _kos(
-        [sys.executable, str(PY_CTX), "close", "--not", "domain/ortak.md"], kok / "a")
+        [sys.executable, str(PY_CTX), "close", "--not", "facts/ortak.md"], kok / "a")
     py_dosyalar = topla()
 
     kur()
-    go_cikti, go_kod = _kos([str(go_ctx), "close", "--not", "domain/ortak.md"], kok / "a")
+    go_cikti, go_kod = _kos([str(go_ctx), "close", "--not", "facts/ortak.md"], kok / "a")
     go_dosyalar = topla()
 
     assert _maskele(go_cikti) == _maskele(py_cikti)
@@ -593,12 +601,12 @@ def test_init_paritesi(go_ctx, tmp_path, argv, onceden, neden):
 
 
 MIGRATE_NOTLARI = {
-    "domain/a.md": "---\ntitle: A\nlifecycle: product\ndescription: D\n---\n\ngovde\n",
-    "domain/b.md": "---\ntitle: B\nlifecycle: current\n---\n\ngovde\n",
-    "domain/c.md": "---\ntitle: C\nlifecycle: legacy\n---\n\ngovde\n",
-    "domain/d.md": "---\ntitle: D\nlifecycle: historical\n---\n\ngovde\n",
-    "domain/e.md": "---\ntitle: E\nlifecycle: uydurma\n---\n\ngovde\n",
-    "domain/f.md": "---\ntitle: F\nstatus: active\n---\n\nzaten yeni\n",
+    "facts/a.md": "---\ntitle: A\nlifecycle: product\ndescription: D\n---\n\ngovde\n",
+    "facts/b.md": "---\ntitle: B\nlifecycle: current\n---\n\ngovde\n",
+    "facts/c.md": "---\ntitle: C\nlifecycle: legacy\n---\n\ngovde\n",
+    "facts/d.md": "---\ntitle: D\nlifecycle: historical\n---\n\ngovde\n",
+    "facts/e.md": "---\ntitle: E\nlifecycle: uydurma\n---\n\ngovde\n",
+    "facts/f.md": "---\ntitle: F\nstatus: active\n---\n\nzaten yeni\n",
     # Satir sonu ve son-newline kenar durumlari: migrate bunlari KORUMALI.
     "pitfalls/g-crlf.md": "---\r\ntitle: G\r\nlifecycle: current\r\n---\r\n\r\nCRLF\r\n",
     "pitfalls/h-son.md": "---\ntitle: H\nlifecycle: current\n---\n\nson newline yok",
@@ -750,7 +758,7 @@ def test_bootstrap_eski_kaydi_yerinde_gunceller(go_ctx, tmp_path):
     cikti, _ = _kos_ortamli([str(go_ctx), "bootstrap", "--proje", "deneme"], alan / "proj", ortam)
     ayar = (alan / "home" / ".claude" / "settings.json").read_text(encoding="utf-8")
 
-    assert "↻ settings.json: index" in cikti, "eski kayit taninmadi"
+    assert "↻ settings.json[SessionStart]: index" in cikti, "eski kayit taninmadi"
     assert ayar.count("hook index") == 1, "kanca iki kez kayitli"
     assert "ctx_index.py" not in ayar, "eski komut hala duruyor"
     assert '"statusMessage": "eski"' in ayar, "kullanicinin diger alanlari silinmis"
@@ -774,7 +782,7 @@ def test_bootstrap_ikinci_kosumda_hicbir_sey_degismez(go_ctx, tmp_path):
     py = iki_kez([sys.executable, str(PY_CTX)])
     go = iki_kez([str(go_ctx)])
     assert go == py
-    assert "= settings.json: index kayitli" in go[0]      # tekrar eklenmedi
+    assert "= settings.json[SessionStart]: index kayitli" in go[0]      # tekrar eklenmedi
     assert "eklendi" not in go[0] and "↻" not in go[0]    # ne ekleme ne guncelleme
 
 
