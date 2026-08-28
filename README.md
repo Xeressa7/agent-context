@@ -145,6 +145,13 @@ go build -o bin/ctx.exe ./go/cmd/ctx    # bundan sonra ctx = Go
 rm bin/ctx.exe                          # geri dönüş: yine Python
 ```
 
+**Kancayı KABUK üzerinden çalıştırmayan bir ana makine `ctx.exe`'yi doğrudan
+çağırmalıdır.** Sarmalayıcı bir POSIX shell script'idir; Windows'ta kabuk
+araya girmeden `CreateProcess` ile açılırsa `WinError 193 — geçerli bir Win32
+uygulaması değil` verir, `.bat` ise `cmd.exe` ister. Ölçüldü 2026-08-28: Hermes
+`on_session_end` kancası tam olarak buna düştü. Claude Code kancaları bash'ten
+koştuğu için sarmalayıcıyı kullanmaya devam eder.
+
 ### Kancalar araçta
 
 Eskiden `~/.claude/hooks/` altına iki Python script'i kopyalanırdı; ikisi de
