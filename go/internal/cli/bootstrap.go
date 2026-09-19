@@ -91,7 +91,13 @@ func Bootstrap(env Env, opts BootstrapOptions) int {
 			return code
 		}
 	} else {
-		env.printf("  ctx init -> %s + context.yaml + AGENTS.md + CLAUDE.md\n", memory)
+		env.printf("  ctx init -> %s + context.yaml + AGENTS.md + CLAUDE.md + .agents/skills (3 skill)\n", memory)
+	}
+
+	// 1b) bu repo hafızanın consumers listesine kaydolur — liste elle tutulursa
+	// yeni repo unutulur ve haritası sessizce bayatlar.
+	for _, line := range registerConsumer(memory, cwd, write) {
+		env.printf("   %s\n", line)
 	}
 
 	env.printf("\n[2/4] SessionStart kancalari\n")

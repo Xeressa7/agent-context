@@ -118,6 +118,35 @@ func Init(env Env, opts InitOptions) int {
 		created = append(created, "CLAUDE.md")
 	}
 
+	// Modelin cagirdigi fiiller: arama, yazma, kapatma. Harnness'lar
+	// `.agents/skills/` altindaki SKILL.md'leri dosyadan kesfeder; mevcut
+	// icerik ASLA ezilmez (ikinci kosum "mevcut" der, farkli icerige dokunmaz).
+	for _, name := range skillNames {
+		fresh, err := template("skills/" + name + "/SKILL.md")
+		if err != nil {
+			skipped = append(skipped, ".agents/skills/"+name+"/SKILL.md (sablon yok — ATLANDI)")
+			continue
+		}
+		target := filepath.Join(cwd, ".agents", "skills", name, "SKILL.md")
+		raw, err := os.ReadFile(target)
+		switch {
+		case err == nil && normalizeNewlines(string(raw)) == normalizeNewlines(fresh):
+			skipped = append(skipped, ".agents/skills/"+name+"/SKILL.md (mevcut)")
+		case err == nil || !os.IsNotExist(err):
+			skipped = append(skipped, ".agents/skills/"+name+"/SKILL.md (MEVCUT — DOKUNULMADI)")
+		default:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				env.errorf("HATA: skill yazilamadi: %s\n", err)
+				return 2
+			}
+			if err := writeText(target, fresh); err != nil {
+				env.errorf("HATA: skill yazilamadi: %s\n", err)
+				return 2
+			}
+			created = append(created, ".agents/skills/"+name+"/SKILL.md (skill)")
+		}
+	}
+
 	env.printf("\n--- ozet ---\n")
 	for _, c := range created {
 		env.printf("  olusturuldu: %s\n", c)
@@ -131,6 +160,10 @@ func Init(env Env, opts InitOptions) int {
 // memoryFolders is the note taxonomy as folders. They are created empty (with
 // .gitkeep) so the shape of the memory is visible before the first note exists.
 var memoryFolders = []string{"facts", "decisions", "pitfalls"}
+
+// skillNames are the model-invoked verbs, installed as `.agents/skills/`.
+// The list lives in ONE place so Python and Go install the same set.
+var skillNames = []string{"ctx-ara", "ctx-yaz", "ctx-kapat"}
 
 func scaffoldMemory(memory, project string) error {
 	for _, d := range []string{"tasks", "sessions"} {

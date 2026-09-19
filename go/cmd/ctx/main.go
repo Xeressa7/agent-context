@@ -28,6 +28,8 @@ Kullanim:
   ctx migrate [--repo YOL] [--kuru]
   ctx bootstrap --proje AD [--memory-path YOL] [--role ...] [--components ...] [--kuru]
   ctx hook index | capture-check | flush  (oturum kancalari — harness cagirir)
+   ctx preferences [--repo YOL] [--profile normal|ekonomik|manuel] [--index-budget N]
+   ctx self-update [--check]  (kurulumu güncelle: fetch + fast-forward)
 
 Butun komutlar Go'da.
 `
@@ -62,6 +64,10 @@ func run(args []string) int {
 		return runBootstrap(env, args[1:])
 	case "hook":
 		return runHook(env, args[1:])
+	case "preferences":
+		return runPreferences(env, args[1:])
+	case "self-update":
+		return runSelfUpdate(env, args[1:])
 	case "-h", "--help", "help":
 		fmt.Fprint(os.Stdout, usage)
 		return 0
@@ -265,6 +271,43 @@ func runBootstrap(env cli.Env, args []string) int {
 		return 2
 	}
 	return cli.Bootstrap(env, opts)
+}
+
+// runPreferences scans the raw args for --index-budget the way argparse sees
+// "given": a passed-but-invalid value (0, negative) must reach the command
+// and fail there, not look like "not passed".
+func runPreferences(env cli.Env, args []string) int {
+	fs := flag.NewFlagSet("preferences", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	opts := cli.PreferencesOptions{}
+	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
+	fs.StringVar(&opts.Profile, "profile", "", "hazir profil (normal|ekonomik|manuel)")
+	fs.IntVar(&opts.Budget, "index-budget", 0, "harita butcesi, karakter")
+	for _, a := range args {
+		name := a
+		if i := strings.Index(a, "="); i >= 0 {
+			name = a[:i]
+		}
+		if name == "-index-budget" || name == "--index-budget" {
+			opts.BudgetGiven = true
+			break
+		}
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return cli.Preferences(env, opts)
+}
+
+func runSelfUpdate(env cli.Env, args []string) int {
+	fs := flag.NewFlagSet("self-update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	opts := cli.SelfUpdateOptions{}
+	fs.BoolVar(&opts.Check, "check", false, "yalniz bak, hicbir sey yazma")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return cli.SelfUpdate(env, opts)
 }
 
 // runHook dispatches the SessionStart hooks. They live in the binary rather

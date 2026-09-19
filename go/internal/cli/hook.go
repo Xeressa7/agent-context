@@ -47,7 +47,10 @@ func HookIndex(env Env, repo string) int {
 	if err != nil {
 		return 0 // no memory in this project: silence
 	}
-	body, err := IndexBodyBudgeted(ctx, indexBudget)
+	if !autoIndexOn(ctx.Data) {
+		return 0 // manuel profil: oturum haritasız açılır
+	}
+	body, err := IndexBodyBudgeted(ctx, indexBudgetFor(ctx.Data))
 	if err != nil {
 		return 0
 	}

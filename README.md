@@ -16,6 +16,18 @@ git clone <bu-repo> ~/.agent-context
 # PATH'e: ~/.agent-context/bin
 ```
 
+## Güncelleme
+
+```sh
+ctx self-update --check   # yalnız bakar: güncel mi, kaç commit geride
+ctx self-update           # fetch + fast-forward; kirli ağaçta DURUR
+```
+
+Kurallar: kirli çalışma ağacında güncellenmez (önce commit/stash), derleme
+otomatik yapılmaz — `go build -o bin/ctx.exe ./go/cmd/ctx` (yoksa Python
+sürümü koşar; `ctx doctor` bayatlığı gösterir). Bakımcı sürüm paketi için
+`python scripts/release.py` (zip + SHA-256, `dist/` altına).
+
 Yeni bir projede, proje kökünde:
 
 ```sh
@@ -23,7 +35,10 @@ ctx bootstrap --proje myapp --components "api,web"
 ctx bootstrap --proje myapp --kuru      # önce ne yapacağını göster
 ```
 
-Dört adım: hafıza iskeleti + adapter dosyaları → `SessionStart` kancaları
+Dört adım: hafıza iskeleti + adapter dosyaları (`context.yaml`, AGENTS router,
+`CLAUDE.md`, `.agents/skills/` altında `ctx-ara`/`ctx-yaz`/`ctx-kapat`) +
+bulunulan reponun hafızanın `consumers` listesine kaydı →
+`SessionStart` kancaları
 (`settings.json`'a kaydedilir) → hafıza deposunda pre-commit kalite kapısı →
 harita bloğu + sağlık kontrolü.
 
@@ -44,6 +59,7 @@ mevcut kancaların, ilgisiz ayarların ve projenin kendi `core.hooksPath`'inin
 | `ctx init` / `ctx bootstrap` | Yeni proje kurulumu |
 | `ctx hook index` / `hook capture-check` | SessionStart kancaları (harness çağırır) |
 | `ctx hook flush` | SessionEnd/PreCompact kancası: ham oturum dökümünü `sessions/.pending/`e düşürür |
+| `ctx preferences [--profile normal\\|ekonomik\\|manuel] [--index-budget N]` | Oturum bağlam tercihi: harita bütçesi + otomatik harita |
 
 ## Neden bu tasarım
 **Kapanış disiplin değil mekanizmadır.** Kapanışta not yazmayı modelin hatırlaması

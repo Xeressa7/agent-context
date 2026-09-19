@@ -189,9 +189,16 @@ görmez" ayrışması oluşamaz.
 Tazeleme **bütün tüketicileri** kapsar, yalnız bulunulan repoyu değil: bir hafızayı
 birden çok repo okur ve yeni not hepsinin bloğunu aynı anda bayatlatır. Liste
 hafızanın kendi `ctx.yaml`'ındadır (`consumers:`) — "beni kimler okuyor" hafızanın
-özelliğidir. Her tüketici KENDİ manifest'iyle hesaplanır; kapsam filtresi repodan
+özelliğidir. Yollar hafızaya GÖRELİ tutulur (`..`, `../../sunucu`); çatıya göreli
+yazılan girdi ölü doğar — okuma onu sessizce atlar, `ctx doctor` uyarır.
+Her tüketici KENDİ manifest'iyle hesaplanır; kapsam filtresi repodan
 repoya değişir. (2026-08-13'e kadar söz repo başına geçerliydi ve ölçüldü ki iki repo
 dokuz gün geride kalmıştı.)
+
+Kayıt kurulumun işidir: `ctx bootstrap` bulunulan repoyu listeye kendisi ekler
+(satır bazlı, yıkıcı değil). Listede OLMAYAN ama hafızayı okuyan repo `ctx doctor`
+uyarısı olur; keşif derinliği 1'dir (hafızanın üst dizini + reponun üst dizini +
+hafızanın üst-üst dizini) — daha derindeki yerleşim ne uyarılır ne yazılır.
 
 ## Oturum kapanışı — disiplin değil mekanizma
 
@@ -218,9 +225,12 @@ makine-yereldir ve hafızaya asla commit edilmez.
 
 ## Bağlam bütçesi
 
-Kancayla ENJEKTE edilen haritanın karakter tavanı vardır (`INDEX_BUTCE`, 16.000);
+Kancayla ENJEKTE edilen haritanın karakter tavanı vardır (varsayılan 16.000);
 dosyaya yazılan blok tavansızdır, çünkü dosya isteğe bağlı okunur ama enjeksiyon
-her oturumun bağlamını yer.
+her oturumun bağlamını yer. Tavan tüketici `context.yaml`'daki `index_budget`
+ile değişir (`ctx preferences --profile ekonomik` 6.000 yazar, `--index-budget N`
+açık değer verir); `auto_index: false` enjeksiyonu kapatır (`ctx preferences
+--profile manuel`), `ctx doctor` bunu uyarı olarak gösterir.
 
 Tavan aşılınca **not düşürülmez** — açıklama kısaltılır (95 → 80 → 55 → 35) ve
 kısaltma çıktıda açıkça yazılır. Not düşürmek sessiz kapsam kaybıdır: harita
@@ -236,7 +246,9 @@ ctx bootstrap --proje <ad> [--role <kapsam-etiketi>] [--components "api,web"]
 ctx bootstrap --proje <ad> --kuru     # hiçbir şey yazmadan ne yapacağını göster
 ```
 
-Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md,
+Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md +
+`.agents/skills/` (`ctx-ara` · `ctx-yaz` · `ctx-kapat` — modelin çağırdığı
+fiiller, harness'lar dosyadan keşfeder),
 (2) `SessionStart` kancaları `settings.json`'a kaydedilir — kancalar **aracın içindedir**
 (`ctx hook index` · `ctx hook capture-check`), ayrı script dosyası kopyalanmaz,
 (3) hafıza reposunda pre-commit kalite kapısı (`core.hooksPath .githooks`),
@@ -263,6 +275,7 @@ archive_index: gecis/legacy-index.md    # devralınan, KANONİK OLMAYAN indeks
 pii_profiles:  [tr]                     # ülkeye özel PII desenleri (tr · us · de)
 review_days:   90                       # `current` notun gözden geçirme aralığı
 closed_markers: [KAPANDI]               # projeye özgü "iş bitti" sözcükleri
+consumers:     [.., ../sunucu]          # hafızayı okuyan repolar (HAFIZAYA göreli)
 ```
 
 Dosya yoksa güvenli varsayılanlar geçerlidir: yalnız `tasks/` + `sessions/` atlanır,

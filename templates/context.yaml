@@ -12,3 +12,7 @@ retrieval:
 write_policy: leader_only
 task_state: {memory_path}/tasks/OPEN.md
 session_state: {memory_path}/sessions/CURRENT.md
+
+# Oturum bağlam tercihi (`ctx preferences` yönetir; yorum satırı pasiftir):
+# index_budget: 6000   # kanca enjeksiyon tavanı, karakter (varsayılan 16000)
+# auto_index: false    # oturum başında harita enjekte etme (varsayılan açık)

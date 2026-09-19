@@ -135,6 +135,26 @@ func Doctor(env Env, repo string) int {
 		}
 	}
 
+	if !autoIndexOn(data) {
+		warns = append(warns, Finding{"uyari", "context.yaml",
+			"otomatik harita kapalı (auto_index: false) — oturumlar haritasız açılır"})
+	}
+
+	// Tüketici kaydı bakımı: ölü girdi tazelenmeyen repo demek, kayıtsız repo
+	// listeye hiç girmemiş demek. İkisi de uyarı — çıkış kodunu etkilemez.
+	if isDir {
+		for _, dead := range deadConsumerEntries(memory) {
+			warns = append(warns, Finding{"uyari", "ctx.yaml",
+				"consumers girdisi çözülemedi: " + dead + " — liste hafızaya göreli olmalı"})
+		}
+		ctx := store.Context{ManifestPath: manifestPath, Data: data, MemoryPath: memory}
+		for _, m := range undiscoveredConsumers(ctx) {
+			warns = append(warns, Finding{"uyari", filepath.Base(filepath.Dir(m)),
+				"hafızayı okuyor ama consumers listesinde yok — haritası tazelenmiyor " +
+					"(`ctx bootstrap` ile kaydet)"})
+		}
+	}
+
 	if len(warns) > 0 {
 		env.printf("\n%d uyari (cikis kodunu etkilemez):\n", len(warns))
 		for i, w := range warns {

@@ -140,7 +140,68 @@ def test_baska_hooksPath_ayari_EZILMEZ(ctx_modul, tmp_path):
     assert any("DOKUNULMADI" in s for s in rapor)
 
 
-# ------------------------------------------------------- capture kapisi sinir
+# ------------------------------------------------------- skill kurulumu
+
+def _init_args(proje="deneme", **kw):
+    import types
+    return types.SimpleNamespace(
+        proje=proje, memory_path=kw.get("memory_path"),
+        role=kw.get("role", "current"), components=kw.get("components", "app"))
+
+
+def _skill_yollari(kok):
+    return [kok / ".agents" / "skills" / ad / "SKILL.md"
+            for ad in ("ctx-ara", "ctx-yaz", "ctx-kapat")]
+
+
+def test_init_uc_skill_kurar(ctx_modul, tmp_path, monkeypatch):
+    """Modelin cagirdigi uc fiil `.agents/skills/` altina kurulur.
+
+    Harnness'lar (Claude Code, Codex, Cursor, OpenCode) SKILL.md'leri dosyadan
+    kesfeder; ayrica kayit gerekmez.
+    """
+    monkeypatch.chdir(tmp_path)
+    assert ctx_modul.komut_init(_init_args()) == 0
+    for yol in _skill_yollari(tmp_path):
+        assert yol.is_file(), f"kurulmadi: {yol}"
+        sablon = (ctx_modul.SABLON / "skills" / yol.parent.name / "SKILL.md")
+        # Metin karsilastirmasi: Windows'ta yazim CRLF'e cevrilir, bayt paritesi
+        # parite testinin isidir.
+        assert yol.read_text(encoding="utf-8") == sablon.read_text(encoding="utf-8")
+
+
+def test_init_ikinci_kosum_skill_tekrar_yazmaz(ctx_modul, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    ctx_modul.komut_init(_init_args())
+    once = {str(p): p.read_bytes() for p in _skill_yollari(tmp_path)}
+    ctx_modul.komut_init(_init_args())
+    for yol in _skill_yollari(tmp_path):
+        assert yol.read_bytes() == once[str(yol)], "idempotent degil: skill yeniden yazildi"
+
+
+def test_init_kullanicinin_skill_icerigi_EZILMEZ(ctx_modul, tmp_path, monkeypatch, capsys):
+    """Kullanici SKILL.md'yi kendine gore duzenlemisse init ustune yazmaz.
+
+    Ezseydi kullanicinin model talimati sessizce sablonla degisirdi.
+    """
+    monkeypatch.chdir(tmp_path)
+    hedef = tmp_path / ".agents" / "skills" / "ctx-ara" / "SKILL.md"
+    hedef.parent.mkdir(parents=True)
+    hedef.write_text("benim aramam\n", encoding="utf-8")
+
+    ctx_modul.komut_init(_init_args())
+    assert hedef.read_text(encoding="utf-8") == "benim aramam\n", "kullanici icerigi ezildi"
+    assert "DOKUNULMADI" in capsys.readouterr().out
+
+
+def test_bootstrap_kuru_skill_yazmaz(ctx_modul, tmp_path, monkeypatch, sahte_claude):
+    """--kuru hicbir sey yazmaz: skill de dahil."""
+    import types
+    monkeypatch.chdir(tmp_path)
+    args = types.SimpleNamespace(proje="deneme", memory_path=None,
+                                 role="current", components="app", kuru=True)
+    assert ctx_modul.komut_bootstrap(args) == 0
+    assert not (tmp_path / ".agents").exists(), "kuru kosumda skill yazildi"
 
 def _git(*arg, cwd):
     import subprocess

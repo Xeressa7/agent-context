@@ -569,6 +569,7 @@ INIT_VAKALARI = [
     ([], {"AGENTS.md": "eski icerik\n"}, "AGENTS.md MEVCUT: dokunulmaz, router basilir"),
     ([], {"context.yaml": "v: 1\n"}, "context.yaml mevcut"),
     ([], {"AGENTS.md": "a\n", "CLAUDE.md": "b\n", "context.yaml": "c\n"}, "hepsi mevcut"),
+    ([], {".agents/skills/ctx-ara/SKILL.md": "benim aramam\n"}, "kullanici skill'i EZILMEZ"),
 ]
 
 
@@ -582,7 +583,9 @@ def test_init_paritesi(go_ctx, tmp_path, argv, onceden, neden):
             shutil.rmtree(alan, ignore_errors=True)
         (alan / "proj").mkdir(parents=True)
         for ad, metin in (onceden or {}).items():
-            (alan / "proj" / ad).write_text(metin, encoding="utf-8")
+            hedef = alan / "proj" / ad
+            hedef.parent.mkdir(parents=True, exist_ok=True)
+            hedef.write_text(metin, encoding="utf-8")
         return alan / "proj"
 
     proj = kur()
@@ -783,6 +786,7 @@ def test_bootstrap_ikinci_kosumda_hicbir_sey_degismez(go_ctx, tmp_path):
     go = iki_kez([str(go_ctx)])
     assert go == py
     assert "= settings.json[SessionStart]: index kayitli" in go[0]      # tekrar eklenmedi
+    assert "= consumers (kayıtlı)" in go[0]                             # kayıt tekrar yazılmadı
     assert "eklendi" not in go[0] and "↻" not in go[0]    # ne ekleme ne guncelleme
 
 
@@ -848,3 +852,321 @@ def test_gercek_hafiza_paritesi(go_ctx):
         py_cikti, _ = _kos([sys.executable, str(PY_CTX), "search", sorgu], manifest)
         go_cikti, _ = _kos([str(go_ctx), "search", sorgu], manifest)
         assert go_cikti == py_cikti, f"gercek korpusta fark: {sorgu!r}"
+
+
+# --- consumers ---------------------------------------------------------------
+#
+# Bootstrap bulunduğun repoyu hafızanın `consumers` listesine ekler; doctor
+# kayıtsız tüketiciyi ve ölü girdiyi uyarır. İkisi de dosya + çıktı paritesine
+# tabidir: liste satır bazında düzenlenir, el düzeni iki tarafta da korunur.
+
+def _tuketici_alani(alan):
+    if alan.exists():
+        shutil.rmtree(alan, ignore_errors=True)
+    (alan / "home" / ".claude").mkdir(parents=True)
+    (alan / "proj").mkdir(parents=True)
+    mem = alan / "mem"
+    (mem / "tasks").mkdir(parents=True)
+    (mem / "sessions").mkdir(parents=True)
+    (mem / "README.md").write_text("# h\n", encoding="utf-8")
+    (mem / "tasks" / "OPEN.md").write_text("x\n", encoding="utf-8")
+    (mem / "sessions" / "CURRENT.md").write_text("x\n", encoding="utf-8")
+    return alan / "proj", mem, _sahte_ev_ile(alan / "home")
+
+
+def test_bootstrap_tuketiciyi_kaydeder(go_ctx, tmp_path):
+    """Önceden var olan hafızanın ctx.yaml'ı el düzeni korunarak genişler."""
+    alan = tmp_path / "kayit"
+    once = "# hafıza ayarları\npii_profiles: [tr]\n"
+
+    def kur():
+        proj, mem, ortam = _tuketici_alani(alan)
+        (mem / "ctx.yaml").write_text(once, encoding="utf-8")
+        return proj, mem, ortam
+
+    proj, mem, ortam = kur()
+    py_cikti, py_kod = _kos_ortamli(
+        [sys.executable, str(PY_CTX), "bootstrap", "--proje", "deneme",
+         "--memory-path", "../mem"], proj, ortam)
+    py_yaml = (mem / "ctx.yaml").read_bytes()
+
+    proj, mem, ortam = kur()
+    go_cikti, go_kod = _kos_ortamli(
+        [str(go_ctx), "bootstrap", "--proje", "deneme",
+         "--memory-path", "../mem"], proj, ortam)
+    go_yaml = (mem / "ctx.yaml").read_bytes()
+
+    assert go_cikti == py_cikti
+    # Kod 1: sablon `role` anahtari yazmadigi icin doctor `role` satirinda
+    # kalir — onceden beri boyle, bu testin konusu degil; ikisi de ayni olmali.
+    assert go_kod == py_kod
+    assert go_yaml == py_yaml
+    metin = go_yaml.decode("utf-8").replace("\r\n", "\n")
+    assert metin.startswith(once), "el düzeni korunmadı"
+    assert "consumers: [../proj]" in metin
+    assert "+ consumers: [../proj] eklendi" in go_cikti
+
+
+def test_doctor_kayitsiz_ve_olu_tuketiciyi_uyarir(go_ctx, tmp_path):
+    """Listede olmayan okuyucu + çözülemeyen girdi: ikisi de uyarı, exit 0."""
+    alan = tmp_path / "kesif"
+    if alan.exists():
+        shutil.rmtree(alan, ignore_errors=True)
+    mem = alan / "mem"
+    (mem / "tasks").mkdir(parents=True)
+    (mem / "sessions").mkdir(parents=True)
+    (mem / "README.md").write_text("# h\n", encoding="utf-8")
+    (mem / "tasks" / "OPEN.md").write_text("x\n", encoding="utf-8")
+    (mem / "sessions" / "CURRENT.md").write_text("x\n", encoding="utf-8")
+    (mem / "ctx.yaml").write_text(
+        "pii_profiles: [tr]\nconsumers: [../projA, ../hayalet]\n", encoding="utf-8")
+    for ad in ("projA", "projB"):
+        (alan / ad).mkdir()
+        (alan / ad / "context.yaml").write_text(
+            f"version: 1\nproject: {ad}\nmemory_path: ../mem\nrole: current\n",
+            encoding="utf-8")
+
+    py_cikti, py_kod = _kos([sys.executable, str(PY_CTX), "doctor"], alan / "projA")
+    go_cikti, go_kod = _kos([str(go_ctx), "doctor"], alan / "projA")
+
+    assert go_cikti == py_cikti
+    assert go_kod == py_kod == 0, "uyarılar çıkışı bozmamalı"
+    assert "projB" in go_cikti and "consumers listesinde yok" in go_cikti
+    assert "hayalet" in go_cikti and "çözülemedi" in go_cikti
+
+
+# --- self-update ---------------------------------------------------------------
+#
+# Kurulum güncellemesi `~/.agent-context`'te olur; testler HOME/USERPROFILE'ı
+# sahte bir dizine çevirir (bootstrap paritesindeki gibi) ve uzak depoyu YEREL
+# bir dizin yapar — ağ yok, hash yok: çıktıda sürüm dizgileri + commit SAYISI
+# var, ikisi de iki tarafta aynıdır.
+
+def _git(komut, cwd):
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *komut],
+                   cwd=str(cwd), capture_output=True, timeout=60, check=True)
+
+
+def _guncelleme_alani(alan, *, uzak_surum="9.9.9", kurulu_surum="9.9.8",
+                      kirli=False, akissiz=False, gitsiz=False):
+    if alan.exists():
+        shutil.rmtree(alan, ignore_errors=True)
+    (alan / "home").mkdir(parents=True)
+    (alan / "proj").mkdir(parents=True)
+    ortam = _sahte_ev_ile(alan / "home")
+    kok = alan / "home" / ".agent-context"
+    if gitsiz:
+        kok.mkdir(parents=True)
+        return alan / "proj", ortam, kok
+    uzak = alan / "uzak"
+    uzak.mkdir()
+    _git(["init", "--quiet"], uzak)
+    (uzak / "VERSION").write_text(kurulu_surum + "\n", encoding="utf-8")
+    (uzak / "x.txt").write_text("x\n", encoding="utf-8")
+    _git(["add", "-A"], uzak)
+    _git(["commit", "-qm", "kurulu sürüm"], uzak)
+    _git(["clone", "--quiet", str(uzak), str(kok)], alan)
+    if akissiz:
+        _git(["remote", "remove", "origin"], kok)
+        return alan / "proj", ortam, kok
+    if uzak_surum != kurulu_surum:
+        (uzak / "VERSION").write_text(uzak_surum + "\n", encoding="utf-8")
+        _git(["add", "-A"], uzak)
+        _git(["commit", "-qm", "yeni sürüm"], uzak)
+    if kirli:
+        (kok / "kirli.txt").write_text("elle düzen\n", encoding="utf-8")
+    return alan / "proj", ortam, kok
+
+
+def _iki_tarafta(alan, go_ctx, eksen, *argv):
+    """Her iki implementasyonu AYRI fikstürde koşar: commit'li git deposu
+    Windows'ta salt-okunur nesneler bırakır, aynı dizin yeniden kurulamaz.
+    Çıktıda hash/time LEAK'i yasaktır — kurulumlar ancak böyle kıyaslanır."""
+    proj, ortam, kok = _guncelleme_alani(alan / "py", **eksen)
+    py_cikti, py_kod = _kos_ortamli(
+        [sys.executable, str(PY_CTX), "self-update", *argv], proj, ortam)
+    proj, ortam, kok = _guncelleme_alani(alan / "go", **eksen)
+    go_cikti, go_kod = _kos_ortamli(
+        [str(go_ctx), "self-update", *argv], proj, ortam)
+    assert go_cikti == py_cikti
+    assert go_kod == py_kod
+    return go_cikti, go_kod
+
+
+def test_self_update_check_guncel(go_ctx, tmp_path):
+    cikti, kod = _iki_tarafta(tmp_path / "u1", go_ctx, {"uzak_surum": "9.9.8"}, "--check")
+    assert kod == 0 and "güncel (sürüm 9.9.8)" in cikti
+
+
+def test_self_update_check_geride(go_ctx, tmp_path):
+    cikti, kod = _iki_tarafta(tmp_path / "u2", go_ctx, {}, "--check")
+    # uzak 9.9.9, kurulu 9.9.8: kurulum bir commit geride
+    assert kod == 0
+    assert "güncelleme var: sürüm 9.9.8 → 9.9.9 (1 commit)" in cikti
+    assert "ctx self-update" in cikti
+
+
+def test_self_update_uygular(go_ctx, tmp_path):
+    alan = tmp_path / "u3"
+    proj, ortam, kok = _guncelleme_alani(alan / "py")
+    py_cikti, py_kod = _kos_ortamli(
+        [sys.executable, str(PY_CTX), "self-update"], proj, ortam)
+    assert py_kod == 0 and (kok / "VERSION").read_text(encoding="utf-8") == "9.9.9\n"
+
+    proj, ortam, kok = _guncelleme_alani(alan / "go")
+    go_cikti, go_kod = _kos_ortamli([str(go_ctx), "self-update"], proj, ortam)
+    assert go_cikti == py_cikti and go_kod == py_kod == 0
+    assert (kok / "VERSION").read_text(encoding="utf-8") == "9.9.9\n"
+    assert "güncellendi: sürüm 9.9.8 → 9.9.9" in go_cikti
+
+
+def test_self_update_kirli_agacta_durur(go_ctx, tmp_path):
+    cikti, kod = _iki_tarafta(tmp_path / "u4", go_ctx, {"kirli": True})
+    assert kod == 1 and "kirli (1 dosya)" in cikti
+
+
+def test_self_update_gitsiz_kurulum(go_ctx, tmp_path):
+    # Çıktı kurulum YOLUNU içerir; iki tarafın dizini farklıdır — mesajın
+    # biçimi ve kod kıyaslanır, bayt eşitliği değil.
+    alan = tmp_path / "u5"
+    proj, ortam, kok = _guncelleme_alani(alan / "py", gitsiz=True)
+    py_cikti, py_kod = _kos_ortamli(
+        [sys.executable, str(PY_CTX), "self-update"], proj, ortam)
+    proj, ortam, kok = _guncelleme_alani(alan / "go", gitsiz=True)
+    go_cikti, go_kod = _kos_ortamli([str(go_ctx), "self-update"], proj, ortam)
+    assert go_kod == py_kod == 2
+    assert "git deposu değil" in py_cikti and "git deposu değil" in go_cikti
+    for cikti, taraf in ((py_cikti, "py"), (go_cikti, "go")):
+        assert cikti.startswith("HATA: kurulum bir git deposu değil: "), taraf
+
+
+def test_self_update_akissiz_kurulum(go_ctx, tmp_path):
+    cikti, kod = _iki_tarafta(tmp_path / "u6", go_ctx, {"akissiz": True}, "--check")
+    assert kod == 2 and "takibi yok" in cikti
+
+
+# --- preferences -------------------------------------------------------------
+#
+# `preferences` DOSYA YAZAR (context.yaml'a satir bazli edit). Karsilastirma
+# cikti + cikis kodu + manifestin BAYTLARIYLA yapilir; yorumlar, anahtar sirasi
+# ve satir sonu bicimi iki tarafta da aynen korunmali.
+
+PREF_VARSAYILAN = ("version: 1\nproject: deneme\nmemory_path: ../mem\n"
+                   "role: current\ncomponents: [app]\n")
+
+PREF_DOLU = (PREF_VARSAYILAN + "# bütçe yorumu\nindex_budget: 6000\n"
+             "auto_index: false\n")
+
+PREF_VAKALARI = [
+    ([], PREF_VARSAYILAN, "göster: varsayılan normal"),
+    (["--profile", "ekonomik"], PREF_VARSAYILAN, "ekonomik yazar"),
+    (["--profile", "manuel"], PREF_VARSAYILAN, "manuel yazar"),
+    (["--profile", "normal"], PREF_DOLU, "normale dönüş satırları siler"),
+    (["--profile", "ekonomik"], PREF_DOLU, "zaten kurulu değerde dosya değişmez"),
+    (["--index-budget", "4000"], PREF_VARSAYILAN, "özel bütçe"),
+    (["--profile", "ekonomik", "--index-budget", "3000"], PREF_VARSAYILAN,
+     "profil + açık bütçe (açık olan kazanır)"),
+    (["--index-budget", "0"], PREF_VARSAYILAN, "geçersiz bütçe: exit 2, dosya değişmez"),
+    (["--index-budget", "-5"], PREF_VARSAYILAN, "negatif bütçe: exit 2"),
+]
+
+
+@pytest.mark.parametrize("argv,giris,neden", PREF_VAKALARI,
+                         ids=[n for _, _, n in PREF_VAKALARI])
+def test_preferences_paritesi(go_ctx, tmp_path, argv, giris, neden):
+    alan = tmp_path / "pref"
+
+    def kur():
+        if alan.exists():
+            shutil.rmtree(alan, ignore_errors=True)
+        (alan / "proj").mkdir(parents=True)
+        (alan / "proj" / "context.yaml").write_text(giris, encoding="utf-8")
+        return alan / "proj"
+
+    def manifest():
+        return (alan / "proj" / "context.yaml").read_bytes()
+
+    proj = kur()
+    py_cikti, py_kod = _kos([sys.executable, str(PY_CTX), "preferences", *argv], proj)
+    py_dosya = manifest()
+
+    proj = kur()
+    go_cikti, go_kod = _kos([str(go_ctx), "preferences", *argv], proj)
+    go_dosya = manifest()
+
+    assert go_cikti == py_cikti, f"çıktı ({neden})"
+    assert go_kod == py_kod, f"çıkış kodu ({neden})"
+    assert go_dosya == py_dosya, f"context.yaml baytları ({neden})"
+
+
+def test_preferences_crlf_korunur(go_ctx, tmp_path):
+    """CRLF manifest iki tarafta da CRLF kalır; LF'ye çevrilse diff bütün
+    dosyaya bulaşırdı."""
+    alan = tmp_path / "prefcrlf"
+
+    def kur():
+        if alan.exists():
+            shutil.rmtree(alan, ignore_errors=True)
+        (alan / "proj").mkdir(parents=True)
+        (alan / "proj" / "context.yaml").write_bytes(
+            PREF_VARSAYILAN.replace("\n", "\r\n").encode("utf-8"))
+        return alan / "proj"
+
+    def manifest():
+        return (alan / "proj" / "context.yaml").read_bytes()
+
+    proj = kur()
+    py_cikti, py_kod = _kos(
+        [sys.executable, str(PY_CTX), "preferences", "--profile", "ekonomik"], proj)
+    py_dosya = manifest()
+
+    proj = kur()
+    go_cikti, go_kod = _kos(
+        [str(go_ctx), "preferences", "--profile", "ekonomik"], proj)
+    go_dosya = manifest()
+
+    assert go_cikti == py_cikti
+    assert go_kod == py_kod == 0
+    assert go_dosya == py_dosya
+    assert b"\r\nindex_budget: 6000\r\n" in go_dosya
+
+
+def test_hook_butce_ve_manuel_paritesi(go_ctx, tmp_path):
+    """Kanca bütçeyi uygular, manuelde susar — iki tarafta da aynı."""
+    alan = tmp_path / "prefhook"
+    if alan.exists():
+        shutil.rmtree(alan, ignore_errors=True)
+    proje, hafiza = alan / "proj", alan / "mem"
+    (hafiza / "facts").mkdir(parents=True)
+    (hafiza / "tasks").mkdir(parents=True)
+    (hafiza / "sessions").mkdir(parents=True)
+    (hafiza / "README.md").write_text("# h\n", encoding="utf-8")
+    (hafiza / "tasks" / "OPEN.md").write_text("x\n", encoding="utf-8")
+    (hafiza / "sessions" / "CURRENT.md").write_text("x\n", encoding="utf-8")
+    (hafiza / "facts" / "uzun-aciklama.md").write_text(
+        "---\ntitle: Uzun\n"
+        "description: " + "Bu açıklama kancanın kısaltma kademesine girmesi için bilerek uzatıldı. " * 20 + "\n"
+        "status: active\nupdated: 2026-08-13\n---\n\ngövde\n",
+        encoding="utf-8")
+
+    def kos(kisim, manifest_metin):
+        (proje).mkdir(parents=True, exist_ok=True)
+        (proje / "context.yaml").write_text(manifest_metin, encoding="utf-8")
+        py_cikti, py_kod = _kos([sys.executable, str(PY_CTX), "hook", "index"], proje)
+        go_cikti, go_kod = _kos([str(go_ctx), "hook", "index"], proje)
+        assert go_cikti == py_cikti, f"kanca çıktısı ({kisim})"
+        assert go_kod == py_kod == 0
+        return go_cikti
+
+    # Bütçe en kısa biçimden bile küçük (100): harita ne kadar küçük olursa
+    # olsun bu not düşer — eşik hesabına bağlı kırılgan iddia yok.
+    dar = ("version: 1\nproject: p\nmemory_path: ../mem\nrole: current\n"
+           "index_budget: 100\n")
+    cikti = kos("dar bütçe", dar)
+    # Zarf ensure_ascii ile kaçar; iç metne bakılır.
+    ic = json.loads(cikti)["hookSpecificOutput"]["additionalContext"]
+    assert "korpus bolunmeli" in ic, "dar bütçede tavan notu beklenir"
+
+    kapali = ("version: 1\nproject: p\nmemory_path: ../mem\nrole: current\n"
+              "auto_index: false\n")
+    assert kos("manuel", kapali) == "", "manuel profilde kanca susmalı"

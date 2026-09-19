@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import unicodedata
@@ -545,7 +546,72 @@ def index_govde(veri: dict, hafiza: Path, tum: bool = False,
 # kapsam kaybidir: harita "hepsi bu" diye okunur ve gorunmeyen not hic aranmaz.
 # Aciklama kisalinca satir hala orada durur ve ajan notu acabilir.
 INDEX_BUTCE = 16000
+# Ekonomik profilin tavani (avenoxbeyin'deki 5000/2000 ayrimi gibi, ama burada
+# tek sayi: harita zaten kisaltma kademeleriyle sigar, not dusurmez).
+EKONOMIK_BUTCE = 6000
 _INDEX_ACIKLAMA_KADEMELERI = (INDEX_ACIKLAMA_SINIRI, 80, 55, 35)
+
+
+def _index_butcesi(veri: dict) -> int:
+    """Kanca enjeksiyon tavani: `context.yaml → index_budget`, yoksa 16000.
+
+    Okunamayan/deger-disi sayi guvenli varsayilana duser; sessizce 0 olup
+    haritayi bosaltmak, tavani asmaktan kotudur.
+    """
+    try:
+        n = int(str(veri.get("index_budget", INDEX_BUTCE)).strip())
+    except (ValueError, TypeError):
+        return INDEX_BUTCE
+    return n if n > 0 else INDEX_BUTCE
+
+
+_KAPALI_DEGERLER = ("false", "0", "hayir", "hayır", "no", "kapali", "kapalı")
+
+
+def _otomatik_harita(veri: dict) -> bool:
+    """Oturum basinda harita enjekte edilsin mi (`auto_index`, varsayilan acik)."""
+    return str(veri.get("auto_index", "true")).strip().casefold() not in _KAPALI_DEGERLER
+
+
+def _profil_adi(butce: int, otomatik: bool) -> str:
+    if not otomatik:
+        return "manuel"
+    if butce == INDEX_BUTCE:
+        return "normal"
+    if butce == EKONOMIK_BUTCE:
+        return "ekonomik"
+    return "özel"
+
+
+def _manifest_satir_ayarla(metin: str, anahtar: str, deger: str | None) -> str:
+    """`anahtar: deger` satirini yerinde degistirir / ekler / siler.
+
+    Tam YAML yazici iki implementasyonda ayni baytlari uretmezdi (anahtar sirasi,
+    yorumlar, bosluklar kayardi); satir bazli edit uretir. Yorum satirlari ve
+    girintili (blok-ici) satirlar eslesmez — `index_targets` altindaki bir
+    `index_budget` bizimki degildir.
+    """
+    nl = "\r\n" if "\r\n" in metin else "\n"
+    son = metin.endswith(nl)
+    govde = metin[:-len(nl)] if son else metin
+    satirlar = govde.split(nl) if govde else []
+    yeni = f"{anahtar}: {deger}" if deger is not None else None
+    bulundu = False
+    cikti = []
+    for satir in satirlar:
+        kod = satir.split("#", 1)[0]
+        ad, ayirac, _ = kod.strip().partition(":")
+        if (not bulundu and ayirac and ad.strip() == anahtar
+                and satir[:1] not in (" ", "\t")):
+            bulundu = True
+            if yeni is not None:
+                cikti.append(yeni)
+        else:
+            cikti.append(satir)
+    if not bulundu and yeni is not None:
+        cikti.append(yeni)
+    sonuc = nl.join(cikti)
+    return sonuc + nl if son else sonuc
 
 
 def index_govde_butceli(veri: dict, hafiza: Path, butce: int = INDEX_BUTCE) -> str:
@@ -610,6 +676,135 @@ def tuketici_manifestleri(hafiza: Path, mevcut: Path) -> list[Path]:
         if aday.is_file() and aday not in yollar:
             yollar.append(aday)
     return yollar
+
+
+def olu_tuketici_girdileri(hafiza: Path) -> list[str]:
+    """`consumers` listesinde çözülemeyen girdiler (hafızaya göreli yol + manifest).
+
+    Liste hafızaya GÖRELİ tutulur; çatıya göreli yazılan girdi sessizce ölü
+    doğar ve `tuketici_manifestleri` onu atlar — tazeleme o repoya hiç uğramaz.
+    """
+    oluler = []
+    for ham in _liste(hafiza_ayarlari(hafiza).get("consumers")):
+        if not ((hafiza / ham).resolve() / "context.yaml").is_file():
+            oluler.append(ham)
+    return oluler
+
+
+def kayitsiz_tuketiciler(hafiza: Path, mevcut: Path) -> list[Path]:
+    """`consumers` listesinde OLMAYAN ama hafızayı okuyan repoların manifestleri.
+
+    Liste elle tutulursa yeni repo kaydı unutulur ve haritası sessizce bayatlar;
+    bulunan kayıtsızlar `ctx doctor` uyarısı olur, `ctx bootstrap` kaydı kendisi
+    yapar. Tarama derinliği 1'dir (komşu kontrolü, dosya sistemi gezgini değil):
+    hafızanın üst dizini + bulunulan reponun üst dizini + hafızanın üst-üst dizini.
+    Daha derindeki yerleşimler uyarılmaz — sessizce de yazılmaz.
+    """
+    bilinen = {p.resolve() for p in tuketici_manifestleri(hafiza, mevcut)}
+    hafiza = hafiza.resolve()
+    kokler = sorted({hafiza.parent, mevcut.resolve().parent, hafiza.parent.parent})
+    bulunan = []
+    for kok in kokler:
+        try:
+            girdiler = sorted(kok.iterdir())
+        except OSError:
+            continue
+        for aday in girdiler:
+            if not aday.is_dir():
+                continue
+            manifest = aday / "context.yaml"
+            try:
+                if not manifest.is_file():
+                    continue
+                veri = manifest_oku(manifest)
+            except OSError:
+                continue
+            mp = veri.get("memory_path")
+            if not isinstance(mp, str):
+                continue
+            try:
+                if (aday / mp).resolve() != hafiza:
+                    continue
+            except OSError:
+                continue
+            yol = manifest.resolve()
+            if yol not in bilinen and yol not in bulunan:
+                bulunan.append(yol)
+    return sorted(bulunan)
+
+
+def tuketici_kaydet(hafiza: Path, kok: Path, yaz: bool = True) -> list[str]:
+    """Bulunulan repoyu hafızanın `consumers` listesine ekler (satır bazlı, yıkıcı değil).
+
+    Neden bootstrap'ta: liste elle tutulursa yeni repo kaydı unutulur (2026-08-13
+    dersi); kayıt kurulumun işidir, disiplinin değil. Yollar hafızaya GÖRELİ
+    tutulur; okuma da aynı kuraldadır, iki taraf ayrışamaz.
+    """
+    if not hafiza.is_dir():
+        return ["! hafıza dizini yok — kayıt atlandı"]
+    try:
+        goreli = Path(os.path.relpath(kok.resolve(), hafiza.resolve())).as_posix()
+    except ValueError:
+        return ["! consumers: yol bağlanamadı — elle ekleyin"]
+    ayar = hafiza / HAFIZA_AYAR
+    try:
+        metin = ayar.read_text(encoding="utf-8")
+    except OSError:
+        metin = None
+    if metin is None:
+        if yaz:
+            try:
+                ayar.write_text(
+                    "# Hafıza ayarları (ctx aracı okur; `ctx bootstrap` satır bazında günceller).\n"
+                    f"consumers: [{goreli}]\n", encoding="utf-8")
+            except OSError:
+                return ["! ctx.yaml yazılamadı — elle ekleyin"]
+        return [f"+ consumers: [{goreli}] (ctx.yaml oluşturuldu)"]
+    yeni, durum = _consumers_satir_ekle(metin, goreli)
+    if durum == "eklendi" and yaz:
+        try:
+            ayar.write_text(yeni, encoding="utf-8")
+        except OSError:
+            return ["! ctx.yaml yazılamadı — elle ekleyin"]
+    if durum == "eklendi":
+        return [f"+ consumers: [{goreli}] eklendi"]
+    if durum == "kayitli":
+        return ["= consumers (kayıtlı)"]
+    return [f"! consumers biçimi tanınmadı — elle ekleyin: {goreli}"]
+
+
+def _consumers_satir_ekle(metin: str, goreli: str) -> tuple[str, str]:
+    """consumers girdisini köşeli-parantez satırına ekler.
+
+    Döner: (metin, durum). Durum: eklendi | kayitli | bilinmiyor. Köşeli-parantez
+    DIŞI biçim (blok liste vb.) tanınmaz ve dosyaya DOKUNULMAZ — sessizce
+    normalleştirmek, kullanıcının el düzenini ezmek olur.
+    """
+    nl = "\r\n" if "\r\n" in metin else "\n"
+    son = metin.endswith(nl)
+    govde = metin[:-len(nl)] if son else metin
+    satirlar = govde.split(nl) if govde else []
+    cikti, bulundu = [], False
+    for satir in satirlar:
+        kod = satir.split("#", 1)[0]
+        ad, ayirac, deger = kod.strip().partition(":")
+        if (not bulundu and ayirac and ad.strip() == "consumers"
+                and satir[:1] not in (" ", "\t")):
+            bulundu = True
+            deger = deger.strip()
+            if deger.startswith("[") and deger.endswith("]"):
+                ogeler = [p.strip() for p in deger[1:-1].split(",") if p.strip()]
+                if goreli in ogeler:
+                    return metin, "kayitli"
+                cikti.append(f"consumers: [{', '.join([*ogeler, goreli])}]")
+            else:
+                return metin, "bilinmiyor"
+        else:
+            cikti.append(satir)
+    if not bulundu:
+        cikti.append(f"consumers: [{goreli}]")
+    sonuc = nl.join(cikti)
+    return (sonuc + nl if son else sonuc), "eklendi"
 
 
 def _kisa_hedef(hedef: Path) -> str:
@@ -1075,6 +1270,17 @@ def _git(repo: Path, *arg) -> str:
         return ""
 
 
+def _git_kos(repo: Path, *arg) -> tuple[str, int]:
+    """(stdout, kod): fetch/pull gibi çıktısız komutlar için — `_git` hatayla
+    çıktısızlığı ayırt edemez, burada kod gerekir."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *arg],
+                           capture_output=True, text=True, timeout=60)
+        return r.stdout.strip(), r.returncode
+    except Exception:
+        return "", 1
+
+
 def _icinde_mi(alt: Path, ust: Path) -> bool:
     try:
         alt.resolve().relative_to(ust.resolve())
@@ -1256,8 +1462,10 @@ def _hook_index(args) -> int:
     hafiza = (yol.parent / mp).resolve()
     if not hafiza.is_dir():
         return 0
+    if not _otomatik_harita(veri):
+        return 0
 
-    harita = index_govde_butceli(veri, hafiza).strip()
+    harita = index_govde_butceli(veri, hafiza, _index_butcesi(veri)).strip()
     if not harita:
         return 0
 
@@ -1668,6 +1876,19 @@ def komut_doctor(args) -> int:
             elif _blok_degistir(_oku_ham(hedef), govde) != _oku_ham(hedef):
                 uyarilar.append(("uyari", hedef.name, "index blogu bayat — `ctx index --yaz`"))
 
+    if not _otomatik_harita(veri):
+        uyarilar.append(("uyari", "context.yaml",
+                         "otomatik harita kapalı (auto_index: false) — oturumlar haritasız açılır"))
+
+    if hafiza.is_dir():
+        for ham in olu_tuketici_girdileri(hafiza):
+            uyarilar.append(("uyari", "ctx.yaml",
+                             f"consumers girdisi çözülemedi: {ham} — liste hafızaya göreli olmalı"))
+        for kayit in kayitsiz_tuketiciler(hafiza, yol):
+            uyarilar.append(("uyari", kayit.parent.name,
+                             "hafızayı okuyor ama consumers listesinde yok — haritası tazelenmiyor "
+                             "(`ctx bootstrap` ile kaydet)"))
+
     # uyarilar cikis kodunu ETKILEMEZ — doctor'un yesil kalmasi gerekir
     if uyarilar:
         print(f"\n{len(uyarilar)} uyari (cikis kodunu etkilemez):")
@@ -1679,6 +1900,12 @@ def komut_doctor(args) -> int:
 
 
 # ---------------------------------------------------------------- init
+
+# Modelin cagirdigi fiiller: arama, yazma, kapatma. Harnness'lar
+# `.agents/skills/` altindaki SKILL.md'leri dosyadan kesfeder (Claude Code,
+# Codex, Cursor, OpenCode); kayit icin baska islem gerekmez.
+SKILLS = ("ctx-ara", "ctx-yaz", "ctx-kapat")
+
 
 def komut_init(args) -> int:
     kok = Path.cwd()
@@ -1738,11 +1965,70 @@ def komut_init(args) -> int:
         claude.write_text((SABLON / "CLAUDE.md").read_text(encoding="utf-8"), encoding="utf-8")
         olusan.append("CLAUDE.md")
 
+    for ad in SKILLS:
+        try:
+            yeni = (SABLON / "skills" / ad / "SKILL.md").read_text(encoding="utf-8")
+        except OSError:
+            atlanan.append(f".agents/skills/{ad}/SKILL.md (sablon yok — ATLANDI)")
+            continue
+        hedef = kok / ".agents" / "skills" / ad / "SKILL.md"
+        if hedef.is_file():
+            try:
+                mevcut = hedef.read_text(encoding="utf-8")
+            except OSError:
+                mevcut = None
+            if mevcut == yeni:
+                atlanan.append(f".agents/skills/{ad}/SKILL.md (mevcut)")
+            else:
+                atlanan.append(f".agents/skills/{ad}/SKILL.md (MEVCUT — DOKUNULMADI)")
+        elif hedef.exists():
+            atlanan.append(f".agents/skills/{ad}/SKILL.md (MEVCUT — DOKUNULMADI)")
+        else:
+            hedef.parent.mkdir(parents=True, exist_ok=True)
+            hedef.write_text(yeni, encoding="utf-8")
+            olusan.append(f".agents/skills/{ad}/SKILL.md (skill)")
+
     print("\n--- ozet ---")
     for o in olusan:
         print("  olusturuldu:", o)
     for a in atlanan:
         print("  atlandi    :", a)
+    return 0
+
+
+def komut_preferences(args) -> int:
+    """Oturum baglam tercihi: harita butcesi + otomatik harita.
+
+    Bayraksiz kosum gosterir; `--profile` / `--index-budget` context.yaml'i
+    SATIR BAZLI duzenler (anahtar sirasi, yorumlar, satir sonu korunur).
+    Profiller: normal (16000, acik) · ekonomik (6000, acik) · manuel (harita yok).
+    """
+    yol, veri, _hafiza = baglam_yukle(args.repo)
+    if args.profile is None and args.index_budget is None:
+        butce = _index_butcesi(veri)
+        oto = _otomatik_harita(veri)
+        print(f"profil: {_profil_adi(butce, oto)} · harita bütçesi: {butce} karakter · "
+              f"otomatik harita: {'açık' if oto else 'kapalı'}")
+        return 0
+    metin = yol.read_text(encoding="utf-8")
+    if args.profile == "ekonomik":
+        metin = _manifest_satir_ayarla(metin, "index_budget", str(EKONOMIK_BUTCE))
+        metin = _manifest_satir_ayarla(metin, "auto_index", None)
+        print(f"✓ profil: ekonomik (index_budget: {EKONOMIK_BUTCE} yazıldı)")
+    elif args.profile == "manuel":
+        metin = _manifest_satir_ayarla(metin, "auto_index", "false")
+        print("✓ profil: manuel (auto_index: false yazıldı)")
+    elif args.profile == "normal":
+        metin = _manifest_satir_ayarla(metin, "index_budget", None)
+        metin = _manifest_satir_ayarla(metin, "auto_index", None)
+        print("✓ profil: normal (varsayılanlara dönüldü)")
+    if args.index_budget is not None:
+        if args.index_budget <= 0:
+            print(f"HATA: bütçe pozitif olmalı: {args.index_budget}")
+            return 2
+        metin = _manifest_satir_ayarla(metin, "index_budget", str(args.index_budget))
+        print(f"✓ harita bütçesi: {args.index_budget} karakter (index_budget yazıldı)")
+    yol.write_text(metin, encoding="utf-8")
     return 0
 
 
@@ -1974,7 +2260,13 @@ def komut_bootstrap(args) -> int:
         komut_init(args)
     else:
         mp = args.memory_path or f"../{args.proje}-memory"
-        print(f"  ctx init -> {(kok / mp).resolve()} + context.yaml + AGENTS.md + CLAUDE.md")
+        print(f"  ctx init -> {(kok / mp).resolve()} + context.yaml + AGENTS.md + CLAUDE.md + .agents/skills (3 skill)")
+
+    # 1b) bu repo hafızanın consumers listesine kaydolur — liste elle tutulursa
+    # yeni repo unutulur ve haritası sessizce bayatlar.
+    mp = args.memory_path or f"../{args.proje}-memory"
+    for satir in tuketici_kaydet((kok / mp).resolve(), kok, yaz=yaz):
+        print("  ", satir)
 
     # 2) SessionStart kancalari (harita + capture karari)
     print("\n[2/4] SessionStart kancalari")
@@ -2010,6 +2302,64 @@ def komut_bootstrap(args) -> int:
     print("  · hafiza reposu icin uzak depo (gh repo create <ad>-memory --private) — PII taramasi sonrasi")
     print("  · `ctx` PATH'te degilse: bin/ dizinini PATH'e ekleyin")
     return kod
+
+
+def _kurulum_koku() -> Path:
+    """Güncellenen kurulum: her zaman ev dizinindeki kanonik kopya."""
+    return Path.home() / ".agent-context"
+
+
+def _kurulum_surumu(kok: Path) -> str:
+    try:
+        return (kok / "VERSION").read_text(encoding="utf-8").strip() or "?"
+    except OSError:
+        return "?"
+
+
+def komut_self_update(args) -> int:
+    """Kurulumu günceller (`~/.agent-context`): fetch + fast-forward pull.
+
+    Kurallar: kirli ağaçta DURUR (kullanıcının düzenlemesini ezmez), uzak
+    yalnızca takvimli upstream'den çekilir, derleme OTOMATİK yapılmaz —
+    çalışan binary Windows'ta kilitlidir, sarmalayıcı derlenmemişse Python'a
+    düşer; `ctx doctor` bayatlığı gösterir. `--check` yalnız bakar, yazmaz.
+    """
+    kok = _kurulum_koku()
+    if not (kok / ".git").is_dir():
+        print(f"HATA: kurulum bir git deposu değil: {kok}")
+        return 2
+    if not _git(kok, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"):
+        print("HATA: uzak depo takibi yok — elle güncelleyin.")
+        return 2
+    _, kod = _git_kos(kok, "fetch", "origin", "--quiet")
+    if kod != 0:
+        print("HATA: uzak depo erişilemedi — çevrimdışı olabilirsiniz.")
+        return 2
+    yerel = _kurulum_surumu(kok)
+    uzak = _git(kok, "show", "@{u}:VERSION").strip() or "?"
+    try:
+        geri = int(_git(kok, "rev-list", "--count", "HEAD..@{u}"))
+    except ValueError:
+        geri = -1
+    if geri <= 0:
+        print(f"✓ güncel (sürüm {yerel})")
+        return 0
+    if args.check:
+        print(f"güncelleme var: sürüm {yerel} → {uzak} ({geri} commit)")
+        print("  uygulamak için: ctx self-update")
+        return 0
+    kirli = [s for s in _git(kok, "status", "--porcelain").splitlines() if s.strip()]
+    if kirli:
+        print(f"! çalışma ağacı kirli ({len(kirli)} dosya) — önce commit/stash yapın.")
+        return 1
+    _, kod = _git_kos(kok, "pull", "--ff-only")
+    if kod != 0:
+        print("HATA: çekilemedi (fast-forward dışı?) — elle bakın.")
+        return 2
+    print(f"✓ güncellendi: sürüm {yerel} → {_kurulum_surumu(kok)}")
+    print("  derleme: go varsa `go build -o bin/ctx.exe ./go/cmd/ctx` "
+          "(yoksa Python sürümü koşar; `ctx doctor` bayatlığı gösterir)")
+    return 0
 
 
 # ---------------------------------------------------------------- cli
@@ -2086,6 +2436,18 @@ def main() -> int:
     b.add_argument("--kuru", action="store_true",
                    help="hicbir sey yazma, ne yapacagini goster")
     b.set_defaults(fn=komut_bootstrap)
+
+    p = alt.add_parser("preferences", help="oturum baglam tercihi: harita butcesi + otomatik harita")
+    p.add_argument("--repo")
+    p.add_argument("--profile", choices=["normal", "ekonomik", "manuel"],
+                   help="hazir profil (bayraksiz kosum yalniz gosterir)")
+    p.add_argument("--index-budget", dest="index_budget", type=int, default=None,
+                   help="harita butcesi, karakter (pozitif sayi)")
+    p.set_defaults(fn=komut_preferences)
+
+    u = alt.add_parser("self-update", help="kurulumu güncelle (~/.agent-context: fetch + fast-forward)")
+    u.add_argument("--check", action="store_true", help="yalnız bak, hiçbir şey yazma")
+    u.set_defaults(fn=komut_self_update)
 
     args = ap.parse_args()
     return args.fn(args)
