@@ -1,10 +1,7 @@
-// Command ctx is the Go implementation of the agent context tool.
+// Command ctx is the agent context tool.
 //
-// The Python implementation in bin/ctx.py is still canonical. This binary takes
-// over one command at a time, and the two are held to the same behaviour by the
-// golden vectors in tests/vectors plus a byte-for-byte output comparison on a
-// real memory. Until every command is here and that comparison is clean, changes
-// go to the Python side first.
+// Behavior is locked by the golden vectors in tests/vectors plus the Go test
+// suite; the vectors are the language-independent contract.
 package main
 
 import (

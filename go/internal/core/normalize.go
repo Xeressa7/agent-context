@@ -1,6 +1,5 @@
 // Package core implements the behavioural contract defined by the golden
-// vectors in tests/vectors/*.json. The Python implementation in bin/ctx.py and
-// this package must produce identical results for every vector.
+// vectors in tests/vectors/*.json.
 package core
 
 import (

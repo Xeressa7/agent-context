@@ -8,6 +8,8 @@ canonical DEĞİLDİR. Alt ajanlara ilgili notlar prompt'a gömülerek verilir �
 ajanın gönüllü aramasına güvenilmez.
 
 Hafıza canlı kodun yerine geçmez: `git log` ve `git diff` her ikisinden de otoriterdir.
+Oturum sonunda capture kararı ver: kalıcı bulgu varsa nota yazıp `ctx close --not <yol>`,
+yoksa `ctx close --yok "<gerekçe>"` — karar vermemek geçersizdir.
 
 <!-- ctx:index:basla -->
 _(harita `ctx index --yaz` ile üretilir — bu satır ilk yazımda değişir)_

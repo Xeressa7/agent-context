@@ -4,12 +4,12 @@
 Kullanim (repo kökünden):
     python scripts/release.py [--cikti dist/]
 
-Paket (zip kökünde, repo düzeniyle): bin/ctx, bin/ctx.bat, bin/ctx.py,
-(+ varsa bin/ctx.exe), templates/**, README.md, SPEC.md, VERSION, LICENSE.
+Paket (zip kökünde, repo düzeniyle): bin/ctx, bin/ctx.bat, bin/ctx.exe,
+templates/**, README.md, SPEC.md, VERSION, LICENSE.
 
 Notlar:
-- `bin/ctx.exe` yoksa paketlenmez; sarmalayıcı o makinede Python'a düşer.
-  Varsa KAYNAKTAN YENİ olmalı — değilse betik uyarır (`ctx doctor` kuralı).
+- Önce `go build -o bin/ctx.exe ./go/cmd/ctx` (paket binary'siz çıkmaz).
+  Binary KAYNAKTAN YENİ olmalı — değilse betik uyarır (`ctx doctor` kuralı).
 - Yayın akışı: VERSION'u güncelle → bu betik → GitHub'da `v<VERSION>` etiketi
   + zip + .sha256 dosyasını release'e ekle. Geliştirme dalından paket çıkmaz.
 - İmza yok, SHA-256 var; kurulum tarafı checksum'u el ile doğrular.
@@ -22,7 +22,7 @@ from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
 
-CALISMA_ANI = ["bin/ctx", "bin/ctx.bat", "bin/ctx.py", "README.md", "SPEC.md",
+CALISMA_ANI = ["bin/ctx", "bin/ctx.bat", "bin/ctx.exe", "README.md", "SPEC.md",
                "VERSION", "LICENSE"]
 # Derlenmis binary opsiyonel ama bayatsa sessizce ESKI kod dagitilir.
 DERLENMIS = "bin/ctx.exe"
@@ -35,7 +35,7 @@ def tazelik() -> list[str]:
         return ["NOT: bin/ctx.exe yok — paket Python'a düşer"]
     yapim = exe.stat().st_mtime
     yeniler = [str(p.relative_to(KOK)) for p in
-               [KOK / "bin" / "ctx.py", KOK / "go.mod", KOK / "embed.go",
+               [KOK / "go.mod", KOK / "embed.go",
                 *sorted((KOK / "go").rglob("*.go")),
                 *sorted((KOK / "templates").rglob("*"))]
                if p.is_file() and p.stat().st_mtime > yapim

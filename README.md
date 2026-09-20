@@ -156,14 +156,12 @@ Go **kanoniktir**: değişiklik oraya yazılır, `go test ./...` güncellenir.
 
 ### Tek giriş noktası: `bin/ctx`
 
-Çağıran taraf hangi implementasyonun koştuğunu **bilmez**. `bin/ctx` (ve
-Windows'ta `bin/ctx.bat`) önce derlenmiş `bin/ctx.exe`'yi, yoksa `ctx.py`'yi
-seçer. Kancalar, `pre-commit` ve `settings.json` hep sarmalayıcıyı çağırır —
-böylece binary'nin o makinede derlenmiş olup olmaması hiçbir yeri ilgilendirmez.
+Çağıran taraf detaya girmez: `bin/ctx` (ve Windows'ta `bin/ctx.bat`) derlenmiş
+`bin/ctx.exe`'yi koşar. Kancalar, `pre-commit` ve `settings.json` hep
+sarmalayıcıyı çağırır.
 
 ```sh
-go build -o bin/ctx.exe ./go/cmd/ctx    # bundan sonra ctx = Go
-rm bin/ctx.exe                          # geri dönüş: yine Python
+go build -o bin/ctx.exe ./go/cmd/ctx    # kurulumun parçası; binary repoda durmaz (gitignore)
 ```
 
 **Kancayı KABUK üzerinden çalıştırmayan bir ana makine `ctx.exe`'yi doğrudan
@@ -206,11 +204,7 @@ emekli oldu, davranış şimdi Go testlerinde kilitli (`go/.../*_test.go`).
 Çıktı akımı da davranışın parçasıdır — manifest hatası **stdout**'a gider
 (hook'lar çıktıyı oradan okur).
 
-**Bilerek eşlenmeyen iki şey** (davranış değil, kütüphane metni): `argparse`in
-eksik argüman için bastığı `usage:` bloğu ve `json` modülünün ayrıştırma hatası
-cümlesi. İkisinde de karar, çıkış kodu ve dosya etkisi aynıdır.
-
-Parite çalışmasının asıl getirisi hata bulmak oldu; hepsi Python tarafında
+Parite çalışmasının asıl getirisi hata bulmak oldu: hepsi Python tarafında
 düzeltildi:
 
  1. **`ctx doctor` çöküyordu** — hafızada en az bir yapısal hata varken
@@ -230,7 +224,6 @@ düzeltildi:
    açısından bu "kanca patladı" demek. Kancanın ilk kuralı buydu ve ihlal
    ediliyordu.
 
-**Python'un emekliliği için kalan:** `bin/ctx.py`'nin silinmesi — teknik engel
-yok, test yükü yok (hepsi Go'da), karar ayrı.
-
-Go kanoniktir: değişiklik oraya yazılır, vektör ve Go testleri güncellenir.
+**Python emekli edildi:** `bin/ctx.py` silindi, parite testleri görevini tamamlayıp
+kaldırıldı, davranış Go testlerinde kilitli. Kurulum `go` gerektirir
+(`go build` yukarıda); sarmalayıcı binary yoksa temiz hata verir.

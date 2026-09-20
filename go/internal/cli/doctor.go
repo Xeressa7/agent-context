@@ -207,7 +207,6 @@ func staleBinary() []string {
 			newer = append(newer, filepath.ToSlash(rel))
 		}
 	}
-	consider(filepath.Join(root, "bin", "ctx.py"))
 	consider(filepath.Join(root, "go.mod"))
 	consider(filepath.Join(root, "embed.go"))
 	filepath.WalkDir(filepath.Join(root, "go"), func(path string, d fs.DirEntry, err error) error {
