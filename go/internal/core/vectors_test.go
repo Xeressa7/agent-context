@@ -9,7 +9,8 @@ import (
 )
 
 // The golden vectors live outside the Go module on purpose: they are the shared
-// contract, not Go's test data. Python (tests/test_vektorler.py) runs the same
+// contract, not Go's test data. The vectors are the language-independent
+// behaviour contract (see tests/vectors/README.md).
 // files. If these paths ever diverge, the two implementations stop being
 // comparable — which is the one thing this whole setup exists to prevent.
 const vectorDir = "../../../tests/vectors"

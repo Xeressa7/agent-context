@@ -112,14 +112,19 @@ yaratır ve gerçek PII de geçer.
 ## Test
 
 ```sh
-python -m pytest tests/ -q
+go test ./...              # hepsi: vektörler + komutlar (süreçsiz, milisaniyelik)
+go test -count=1 ./...     # vektör değişikliğinden sonra (test önbelleği modül
+                           # dışındaki JSON'u fark etmez)
 ```
+
+Testler Go'dadır ve koşan binary'yi test eder (`cli.Env` enjeksiyonuyla tam
+komut satırı dahil). Eskiden Python'da koşan diller-arası parite (`pytest`)
+görevini tamamlayıp emekli oldu: taşınacak davranış kalmayınca hakeme gerek
+kalmadı.
 
 **Altın vektörler** (`tests/vectors/*.json`) davranışı **dilden bağımsız** tarif
 eder: normalizasyon, skorlama (mutlak puanlarla), görünürlük, sağlama toplamları,
-frontmatter. Python bunları koşar; planlanan Go implementasyonu **aynı dosyaları**
-okuyup aynı sonucu üretecek — "doğru mu taşıdım" sorusu kanaat değil, geçen/kalan
-sayısı olur.
+frontmatter. Go bunları doğrudan okur.
 
 Her vaka bir `why` alanı taşır: vektör hangi arızayı ya da kararı kilitliyor.
 Bir vaka değiştirilecekse önce o cümle okunur (bu zorunluluk da testli).
@@ -131,8 +136,8 @@ Bir vaka değiştirilecekse önce o cümle okunur (bu zorunluluk da testli).
 - `bootstrap` kancaları yalnız Claude Code'a kurar; diğer araçlar dosyadan okur
   (`AGENTS.md` bloğu) ama otomatik kurulumları yoktur.
 - Çok yazarlı/ekip senaryosu tanımsız.
-- `consumers:` listesi elle tutulur; bir repo eklenip listeye yazılmazsa bloğu
-  sessizce bayatlar (`ctx doctor` yalnız listedekileri kontrol eder).
+- Keşif derinliği 1: daha derindeki yerleşimler ne uyarılır ne yazılır
+  (`ctx doctor` yalnız komşuları tarar).
 
 ## Go geçişi — durum
 
@@ -143,11 +148,11 @@ değiştirmedi ve şablonları taşıyan tek dosyalık bir binary kazandırdı �
 bir şablon kopyası tutmak, bu aracın önlemek için var olduğu şeyin ta kendisi
 olurdu.
 
-**Her şey Go'da:** sekiz komut (`search` · `index` · `validate` · `doctor` ·
-`close` · `init` · `migrate` · `bootstrap`) ve SessionStart kancaları
-(`ctx hook index` · `ctx hook capture-check`). Python sürümü hâlâ
-**kanoniktir**: değişiklik önce oraya yazılır, vektör ve parite testleri
-güncellenir, sonra Go devralır.
+**Her şey Go'da:** on bir komut (`search` · `index` · `validate` · `doctor` ·
+`close` · `init` · `migrate` · `bootstrap` · `preferences` · `self-update`) ve
+oturum kancaları (`ctx hook index` · `ctx hook capture-check` · `ctx hook flush`).
+Go **kanoniktir**: değişiklik oraya yazılır, `go test ./...` güncellenir.
+`bin/ctx.py` (Python) duruyor ama referans değil yedek — silinmesi ayrı bir karar.
 
 ### Tek giriş noktası: `bin/ctx`
 
@@ -182,12 +187,11 @@ Kancaların ilk kuralı **sessizlik**: her oturum başlangıcında koştukları 
 hafıza kurulu olmayan bir projede tek bayt bile basmazlar ve asla sıfırdan
 farklı bir kodla çıkmazlar.
 
-Beş vektör grubunun tamamı Go'da geçiyor; Go testi Python'un okuduğu **aynı**
-JSON dosyalarını okur, böylece iki implementasyon karşılaştırılabilir kalır.
+Beş vektör grubunun tamamı Go'da geçiyor (`tests/vectors/*.json` — dilden
+bağımsız davranış sözleşmesi).
 
 ```sh
-go test ./...                          # vektörler + store + jsonx  (kökten)
-python -m pytest tests/test_parite.py   # uçtan uca: iki sürüm aynı çıktıyı mı veriyor
+go test ./...                          # vektörler + komutlar (kökten)
 go build -o bin/ctx.exe ./go/cmd/ctx    # tek dosya binary (şablonlar gömülü)
 ```
 
@@ -195,13 +199,12 @@ go build -o bin/ctx.exe ./go/cmd/ctx    # tek dosya binary (şablonlar gömülü
 > modülünün dışında yaşadığı için test önbelleği değişikliği fark etmez.
 
 **Bitirme ölçütü karşılandı** (2026-08-13): iki sürüm aynı hafızada yan yana
-koşuyor ve sekiz komutun tamamında **bayt bayt** aynı sonucu veriyor — yalnız
-çıktı değil, *yazdıkları da*: `ctx:index` bloğu, `capture-log.jsonl` satırı,
-`init`in ürettiği dosya ağacı, migrate edilen notun baytları ve kullanıcının
-`settings.json`'ı (anahtar sırası dahil). Kanıt bir kanaat değil,
-`tests/test_parite.py`: gerçek korpus + kenar durumlarını bilerek içeren
-sentetik hafızalar. Çıktı akımı da davranışın parçasıdır — manifest hatası
-Python'da **stdout**'a gider, Go da oraya yazar.
+koşuyor ve komutların tamamında **bayt bayt** aynı sonucu veriyordu — yalnız
+çıktı değil, *yazdıkları da*. Kanıt `tests/test_parite.py` idi (gerçek korpus +
+kenar durumlarını bilerek içeren sentetik hafızalar); parite görevini tamamlayıp
+emekli oldu, davranış şimdi Go testlerinde kilitli (`go/.../*_test.go`).
+Çıktı akımı da davranışın parçasıdır — manifest hatası **stdout**'a gider
+(hook'lar çıktıyı oradan okur).
 
 **Bilerek eşlenmeyen iki şey** (davranış değil, kütüphane metni): `argparse`in
 eksik argüman için bastığı `usage:` bloğu ve `json` modülünün ayrıştırma hatası
@@ -210,15 +213,15 @@ cümlesi. İkisinde de karar, çıkış kodu ve dosya etkisi aynıdır.
 Parite çalışmasının asıl getirisi hata bulmak oldu; hepsi Python tarafında
 düzeltildi:
 
-1. **`ctx doctor` çöküyordu** — hafızada en az bir yapısal hata varken
-   `AttributeError`. Bulgu döngüsü manifest yolunu tutan değişkenin üzerine
-   yazıyordu; temiz korpusta hiç görünmez. Regresyon: `tests/test_dogrulama.py`.
-2. **`ctx migrate` satır sonlarını bozuyordu** — Windows'ta her notu CRLF'e
-   çeviriyordu, yani "satır bazlı, gerisine dokunmaz" sözünün tersine tek
-   satırlık değişiklik diff'te bütün dosya olarak görünüyordu. İki hata üst
-   üste binmişti: `read_text` gerçek satır sonunu gizliyor, `write_text` metin
-   modunda yazıyordu. Artık `_blok_degistir` ile aynı kural geçerli.
-   Regresyon: `tests/test_migrate.py` (bu komutun ilk testleri).
+ 1. **`ctx doctor` çöküyordu** — hafızada en az bir yapısal hata varken
+    `AttributeError`. Bulgu döngüsü manifest yolunu tutan değişkenin üzerine
+    yazıyordu; temiz korpusta hiç görünmez. Regresyon o gün `test_dogrulama.py`'ye,
+    bugün `validate_test.go`'ya kilitli.
+ 2. **`ctx migrate` satır sonlarını bozuyordu** — Windows'ta her notu CRLF'e
+    çeviriyordu, yani "satır bazlı, gerisine dokunmaz" sözünün tersine tek
+    satırlık değişiklik diff'te bütün dosya olarak görünüyordu. İki hata üst
+    üste binmişti: `read_text` gerçek satır sonunu gizliyor, `write_text` metin
+    modunda yazıyordu. Regresyon bugün `migrate_test.go`'da.
 3. **`capture-log.jsonl`** iki dilde farklı boşlukla yazılıyordu; Python'un
    `json.dumps` biçimi kanonik oldu.
 
@@ -227,9 +230,7 @@ düzeltildi:
    açısından bu "kanca patladı" demek. Kancanın ilk kuralı buydu ve ihlal
    ediliyordu.
 
-**Python'un emekliliği için kalan:** teknik engel yok — `bin/ctx.exe` derliyken
-her şey Go'dan koşuyor. `bin/ctx.py` hâlâ kanonik referans ve parite testlerinin
-karşı tarafı olduğu için duruyor; silinmesi ayrı bir karar.
+**Python'un emekliliği için kalan:** `bin/ctx.py`'nin silinmesi — teknik engel
+yok, test yükü yok (hepsi Go'da), karar ayrı.
 
-Python sürümü hâlâ kanoniktir: değişiklik önce oraya yazılır, vektör ve parite
-testleri güncellenir, sonra Go devralır.
+Go kanoniktir: değişiklik oraya yazılır, vektör ve Go testleri güncellenir.

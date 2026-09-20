@@ -35,11 +35,13 @@ Butun komutlar Go'da.
 `
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(run(cli.Env{Out: os.Stdout, Err: os.Stderr, In: os.Stdin}, os.Args[1:]))
 }
 
-func run(args []string) int {
-	env := cli.Env{Out: os.Stdout, Err: os.Stderr, In: os.Stdin}
+// run dispatches argv. Env is injected (not read from the process) so tests
+// can run the whole command line with buffers — including the flag parsing
+// that used to be covered only by the cross-implementation comparison.
+func run(env cli.Env, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, usage)
 		return 2

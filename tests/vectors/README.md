@@ -1,8 +1,8 @@
 # Altın vektörler — dilden bağımsız davranış sözleşmesi
 
 Bu klasördeki JSON dosyaları `ctx`'in **davranışını dile bağlı olmadan** tarif
-eder. Python implementasyonu (`tests/test_vektorler.py`) ve planlanan Go
-implementasyonu **aynı dosyaları** okuyup aynı sonucu üretmek zorundadır.
+eder. Go implementasyonu (`go/internal/core/*_test.go`) bu dosyaları okuyup
+sonucu doğrular.
 
 Amaç: "Go'ya doğru taşıdım mı?" sorusunun bir kanaat değil, **geçen/kalan
 sayısı** olması.

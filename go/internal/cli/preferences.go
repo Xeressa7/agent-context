@@ -66,9 +66,11 @@ func profileName(budget int, auto bool) string {
 
 // setManifestLine edits one top-level `key: value` line in place, appends it
 // when absent, or drops the line when value is nil. Comment lines and indented
-// (in-block) lines never match. Input is \n-normalized; the caller restores
-// the platform endings on write.
+// (in-block) lines never match. Line endings are normalized on entry (callers
+// pass raw bytes); the platform endings are restored on write, the same way
+// Python's text-mode IO translates through \n.
 func setManifestLine(text, key string, value *string) string {
+	text = normalizeNewlines(text)
 	trailing := strings.HasSuffix(text, "\n")
 	body := strings.TrimSuffix(text, "\n")
 	var lines []string
