@@ -104,6 +104,13 @@ kapanış sözcükleri araca gömülü değildir, hafızanın kendi `ctx.yaml`'�
 `closed_markers` listesinden gelir; kapanış biçimini ANLATAN satır `ctx:acik`
 ile muaf tutulur.
 
+Aynı tarama `tasks/OPEN.md`'ye de uygulanır. İndeks satırının tipik çürümesi
+şudur: her oturum durum hücresini "şu an açık olan" diye yeniden yazmak yerine
+sonuna "X kapandı (hash)" ekler ve hücre bir değişiklik günlüğüne döner.
+Hafıza isterse `ctx.yaml`'da `open_row_max_chars` ile indeks hücresine uzunluk
+sınırı koyar (0/yok = kapalı): yalnız açık kalanı söyleyen hücre kendiliğinden
+kısa kalır.
+
 ## Yazma politikası
 
 - Canonical nota yalnız **lider ajan** yazar. Alt ajan/ucuz model bulguyu raporlar,
@@ -275,6 +282,7 @@ archive_index: gecis/legacy-index.md    # devralınan, KANONİK OLMAYAN indeks
 pii_profiles:  [tr]                     # ülkeye özel PII desenleri (tr · us · de)
 review_days:   90                       # `current` notun gözden geçirme aralığı
 closed_markers: [KAPANDI]               # projeye özgü "iş bitti" sözcükleri
+open_row_max_chars: 300                 # OPEN.md hücre sınırı (0 = kapalı)
 consumers:     [.., ../sunucu]          # hafızayı okuyan repolar (HAFIZAYA göreli)
 ```
 

@@ -200,6 +200,49 @@ func TestCheckTaskState(t *testing.T) {
 	}
 }
 
+func TestOpenIndexCarriesOnlyOpenWork(t *testing.T) {
+	root := validArea(t)
+	writeFile(t, filepath.Join(root, "ctx.yaml"), "closed_markers: [KAPANDI, pushlu]\nopen_row_max_chars: 40\n")
+	writeFile(t, filepath.Join(root, "tasks", "is.md"),
+		"---\ntitle: Is\ndescription: x\nstatus: active\nupdated: 2026-08-13\n---\n\nyapilacak\n")
+	writeFile(t, filepath.Join(root, "tasks", "OPEN.md"), strings.Join([]string{
+		"# acik",
+		"| Dosya | Durum |",
+		"|---|---|",
+		"| [Is](is.md) | A pushlu (abc123) · kalan: canli gozlem |",
+		"| [Is](is.md) | kalan: canli gozlem, ardindan urun sahibinin karari, sonra olcum |",
+		"Kapanan satir SILINIR; `KAPANDI` yazilmaz. ctx:acik",
+		"",
+	}, "\n"))
+
+	fs, _ := Check(root, false)
+	byPath := findingsByPath(fs)
+	has := func(path, substr string) bool {
+		for _, m := range byPath[path] {
+			if strings.Contains(m, substr) {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("tasks/OPEN.md:4", "kapanan isi") {
+		t.Errorf("indeksteki kapanis beyani yakalanmali: %v", byPath)
+	}
+	if !has("tasks/OPEN.md:5", "karakter") {
+		t.Errorf("uzun indeks hucresi yakalanmali: %v", byPath)
+	}
+	if len(byPath["tasks/OPEN.md:6"]) != 0 {
+		t.Errorf("ctx:acik satiri muaf olmali: %v", byPath["tasks/OPEN.md:6"])
+	}
+
+	// Sinir ayarlanmamissa uzunluk denetimi kapali.
+	writeFile(t, filepath.Join(root, "ctx.yaml"), "closed_markers: [KAPANDI]\n")
+	fs, _ = Check(root, false)
+	if containsMsg(fs, "karakter") {
+		t.Errorf("open_row_max_chars yokken uzunluk denetimi calismamali: %v", fs)
+	}
+}
+
 func containsMsg(fs []Finding, substr string) bool {
 	for _, f := range fs {
 		if strings.Contains(f.Msg, substr) {

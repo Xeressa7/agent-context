@@ -60,6 +60,34 @@ const (
 	closedFindingCap  = 5
 )
 
+// OPEN.md is an index, and an index row decays in a specific way: every
+// session appends "X closed (hash)" to the status cell instead of rewriting it
+// to what is still open. Measured on the yapit memory (2026-09-27): 46 closing
+// phrases across one index while the gate reported nothing, because OPEN.md
+// was exempt from the closed-item scan. So OPEN.md gets the same scan, and a
+// memory may cap the length of an index cell (`open_row_max_chars`, 0 = off):
+// a status that only names what is open stays short on its own.
+func longIndexCells(text string, limit int) [][2]string {
+	if limit <= 0 {
+		return nil
+	}
+	var out [][2]string
+	for i, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if !strings.HasPrefix(strings.TrimSpace(line), "|") || strings.Contains(line, openItemExemption) {
+			continue
+		}
+		for _, cell := range strings.Split(line, "|") {
+			n := len([]rune(strings.TrimSpace(cell)))
+			if n > limit {
+				out = append(out, [2]string{itoa(i + 1), itoa(n)})
+				break
+			}
+		}
+	}
+	return out
+}
+
 func closedItemLines(text string, extraMarkers []string) [][2]string {
 	var out [][2]string
 	for i, line := range strings.Split(text, "\n") {
@@ -105,7 +133,21 @@ func taskStateFindings(memory string) []Finding {
 		return []Finding{{Level: "hata", Path: "tasks/OPEN.md", Msg: "acik is indeksi okunamadi"}}
 	}
 	tasksRoot, _ := filepath.Abs(tasksDir)
-	extraMarkers := store.MemoryConfig(memory).List("closed_markers")
+	config := store.MemoryConfig(memory)
+	extraMarkers := config.List("closed_markers")
+	for i, c := range closedItemLines(string(raw), extraMarkers) {
+		if i >= closedFindingCap {
+			findings = append(findings, Finding{Level: "hata", Path: "tasks/OPEN.md",
+				Msg: "indekste kapanis beyani olan baska satirlar da var"})
+			break
+		}
+		findings = append(findings, Finding{Level: "hata", Path: "tasks/OPEN.md:" + c[0],
+			Msg: "indeks satiri kapanan isi anlatiyor; yalniz ACIK kalani yaz: " + c[1]})
+	}
+	for _, c := range longIndexCells(string(raw), config.Int("open_row_max_chars", 0)) {
+		findings = append(findings, Finding{Level: "hata", Path: "tasks/OPEN.md:" + c[0],
+			Msg: "indeks hucresi " + c[1] + " karakter; gecmis degil yalniz acik kalan yazilir"})
+	}
 	listed := map[string]bool{}
 	for _, match := range mdLinkPattern.FindAllStringSubmatch(string(raw), -1) {
 		target := strings.TrimSpace(match[1])
