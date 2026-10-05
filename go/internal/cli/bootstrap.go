@@ -73,10 +73,7 @@ func Bootstrap(env Env, opts BootstrapOptions) int {
 	}
 	env.printf("proje kokku: %s\n", cwd)
 
-	memoryRel := opts.MemoryPath
-	if memoryRel == "" {
-		memoryRel = "../" + opts.Project + "-memory"
-	}
+	memoryRel := memoryRelPath(opts.InitOptions)
 	memory := memoryRel
 	if !filepath.IsAbs(memory) {
 		memory = filepath.Join(cwd, filepath.FromSlash(memoryRel))
@@ -92,6 +89,9 @@ func Bootstrap(env Env, opts BootstrapOptions) int {
 		}
 	} else {
 		env.printf("  ctx init -> %s + context.yaml + AGENTS.md + CLAUDE.md + .agents/skills (3 skill)\n", memory)
+		if entry, status, _ := ensureGitignored(cwd, memoryRel, false); status == "olusturuldu" || status == "eklendi" {
+			env.printf("  .gitignore -> %s\n", entry)
+		}
 	}
 
 	// 1b) bu repo hafızanın consumers listesine kaydolur — liste elle tutulursa

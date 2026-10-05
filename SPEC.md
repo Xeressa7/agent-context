@@ -1,8 +1,10 @@
 # Agent Context Standard — SPEC V0
 
 Bu belge, bir ürünün **harness-bağımsız kalıcı bilgi deposunun** nasıl kurulacağını
-tarif eder. Depo `<product>-memory` adlı bir Git reposudur; ürünün bütün repoları
-(`<repo>`) bu hafızayı ortak kullanır. Bilgi Markdown + Git'te yaşar; Claude
+tarif eder. Depo ayrı bir Git reposudur; varsayılan yeri projenin içindeki
+`.gitignore`'lu `.memory/` klasörüdür. Ürünün birden çok reposu (`<repo>`) ortak
+hafıza kullanacaksa depo onların yanında `<product>-memory` olarak durur ve her
+repo `context.yaml → memory_path` ile ona bakar. Bilgi Markdown + Git'te yaşar; Claude
 auto-memory gibi harness hafızaları canonical DEĞİLDİR,
 yalnız önbellek/adapter'dır.
 

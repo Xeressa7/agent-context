@@ -35,6 +35,11 @@ ctx bootstrap --proje myapp --components "api,web"
 ctx bootstrap --proje myapp --kuru      # önce ne yapacağını göster
 ```
 
+Hafıza varsayılan olarak proje içinde, `.gitignore`'lu `.memory/` klasörüne
+kurulur (kendi Git reposu olarak; projenin reposuna girmez). Bir ürünün birden
+çok reposu tek hafızayı paylaşacaksa dışarıda kurun:
+`--memory-path ../myapp-memory` — bu durumda `.gitignore`'a dokunulmaz.
+
 Dört adım: hafıza iskeleti + adapter dosyaları (`context.yaml`, AGENTS router,
 `CLAUDE.md`, `.agents/skills/` altında `ctx-ara`/`ctx-yaz`/`ctx-kapat`) +
 bulunulan reponun hafızanın `consumers` listesine kaydı →

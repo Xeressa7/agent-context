@@ -30,10 +30,7 @@ func Init(env Env, opts InitOptions) int {
 		env.errorf("HATA: calisma dizini okunamadi: %s\n", err)
 		return 2
 	}
-	memoryRel := opts.MemoryPath
-	if memoryRel == "" {
-		memoryRel = "../" + opts.Project + "-memory"
-	}
+	memoryRel := memoryRelPath(opts)
 	memory := memoryRel
 	if !filepath.IsAbs(memory) {
 		memory = filepath.Join(cwd, filepath.FromSlash(memoryRel))
@@ -55,6 +52,18 @@ func Init(env Env, opts InitOptions) int {
 		// they have looked at what is about to be tracked (PII lives here).
 		exec.Command("git", "init", "--quiet", memory).Run()
 		created = append(created, memory+" (iskelet + git init, COMMIT YOK)")
+	}
+
+	switch entry, status, err := ensureGitignored(cwd, memoryRel, true); {
+	case err != nil:
+		env.errorf("HATA: .gitignore yazilamadi: %s\n", err)
+		return 2
+	case status == "olusturuldu":
+		created = append(created, ".gitignore ("+entry+")")
+	case status == "eklendi":
+		created = append(created, ".gitignore'a "+entry+" eklendi")
+	case status == "mevcut":
+		skipped = append(skipped, ".gitignore ("+entry+" zaten var)")
 	}
 
 	manifest := filepath.Join(cwd, "context.yaml")
@@ -155,6 +164,78 @@ func Init(env Env, opts InitOptions) int {
 		env.printf("  atlandi    : %s\n", s)
 	}
 	return 0
+}
+
+// defaultMemoryDir is where the memory lives when --memory-path is not given:
+// INSIDE the project, as a gitignored folder — the layout people expect from
+// tools like this. A memory shared by several repos of one product still goes
+// next to them, explicitly: `--memory-path ../<product>-memory`.
+const defaultMemoryDir = ".memory"
+
+// memoryRelPath is the memory_path written to context.yaml. ONE place, so init
+// and bootstrap can never disagree about the default.
+func memoryRelPath(opts InitOptions) string {
+	if opts.MemoryPath != "" {
+		return opts.MemoryPath
+	}
+	return defaultMemoryDir
+}
+
+// ensureGitignored keeps a memory that lives INSIDE the project out of the
+// project's own repo: the memory is a separate Git repo and may carry PII.
+//
+// Same promise as the rest of init: the user's .gitignore is never rewritten,
+// only the missing line is appended (in the file's own line endings), and a
+// second run reports "mevcut". A memory outside the project (../x-memory, an
+// absolute path) is none of this repo's business — status "". With write=false
+// (bootstrap --kuru) the status is computed and nothing is written.
+func ensureGitignored(cwd, memoryRel string, write bool) (entry, status string, err error) {
+	if filepath.IsAbs(memoryRel) {
+		return "", "", nil
+	}
+	rel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(memoryRel)))
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", "", nil
+	}
+	entry = "/" + rel + "/"
+
+	path := filepath.Join(cwd, ".gitignore")
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		if !write {
+			return entry, "olusturuldu", nil
+		}
+		text := "# ctx hafizasi — ayri bir Git reposu, bu repoya girmez\n" + entry + "\n"
+		if err := writeText(path, text); err != nil {
+			return entry, "", err
+		}
+		return entry, "olusturuldu", nil
+	}
+	if err != nil {
+		return entry, "", err
+	}
+
+	text := string(raw)
+	for _, line := range strings.Split(normalizeNewlines(text), "\n") {
+		if strings.Trim(strings.TrimSpace(line), "/") == rel {
+			return entry, "mevcut", nil
+		}
+	}
+	if !write {
+		return entry, "eklendi", nil
+	}
+	nl := "\n"
+	if strings.Contains(text, "\r\n") {
+		nl = "\r\n"
+	}
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += nl
+	}
+	text += entry + nl
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return entry, "", err
+	}
+	return entry, "eklendi", nil
 }
 
 // memoryFolders is the note taxonomy as folders. They are created empty (with

@@ -31,14 +31,65 @@ func TestInitScaffolds(t *testing.T) {
 			t.Errorf("%s kurulmadı: %v", yol, err)
 		}
 	}
-	// Hafıza proje YANINDA kurulur (../deneme-memory).
+	// Hafıza proje İÇİNDE, gitignore'lu .memory/ klasöründe kurulur.
 	for _, d := range []string{"facts", "decisions", "pitfalls", "tasks", "sessions"} {
-		if _, err := os.Stat(filepath.Join(alan, "deneme-memory", d)); err != nil {
+		if _, err := os.Stat(filepath.Join(root, ".memory", d)); err != nil {
 			t.Errorf("hafıza %s kurulmadı: %v", d, err)
 		}
 	}
+	if got := readFile(t, filepath.Join(root, "context.yaml")); !strings.Contains(got, "memory_path: .memory") {
+		t.Errorf("context.yaml memory_path .memory olmalı:\n%s", got)
+	}
+	if got := readFile(t, filepath.Join(root, ".gitignore")); !strings.Contains(got, "/.memory/") {
+		t.Errorf(".gitignore /.memory/ taşımalı:\n%s", got)
+	}
 	if got := out.String(); !strings.Contains(got, "olusturuldu") {
 		t.Errorf("özet beklenir:\n%s", got)
+	}
+}
+
+func TestInitAppendsToExistingGitignoreOnce(t *testing.T) {
+	root := t.TempDir()
+	chdir(t, root)
+	// Sonunda satır sonu YOK: ekleme önceki satıra yapışmamalı.
+	writeFile(t, filepath.Join(root, ".gitignore"), "node_modules/\r\n*.log")
+	for i := 0; i < 2; i++ {
+		env, _, _ := testEnv()
+		Init(env, InitOptions{Project: "deneme", Role: "current", Components: "app"})
+	}
+	if got := readFile(t, filepath.Join(root, ".gitignore")); got != "node_modules/\r\n*.log\r\n/.memory/\r\n" {
+		t.Errorf(".gitignore beklenmedik (kullanıcı satırları + satır sonu korunmalı, tek ekleme):\n%q", got)
+	}
+}
+
+func TestInitRecognisesExistingGitignoreEntry(t *testing.T) {
+	root := t.TempDir()
+	chdir(t, root)
+	writeFile(t, filepath.Join(root, ".gitignore"), ".memory\n")
+	env, out, _ := testEnv()
+	Init(env, InitOptions{Project: "deneme", Role: "current", Components: "app"})
+	if got := readFile(t, filepath.Join(root, ".gitignore")); got != ".memory\n" {
+		t.Errorf("eşdeğer satır varken dokunulmamalı:\n%q", got)
+	}
+	if !strings.Contains(out.String(), "zaten var") {
+		t.Errorf("çıktı %q", out.String())
+	}
+}
+
+func TestInitExternalMemoryLeavesGitignoreAlone(t *testing.T) {
+	alan := t.TempDir()
+	root := filepath.Join(alan, "proj")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	chdir(t, root)
+	env, _, _ := testEnv()
+	Init(env, InitOptions{Project: "deneme", MemoryPath: "../deneme-memory", Role: "current", Components: "app"})
+	if _, err := os.Stat(filepath.Join(alan, "deneme-memory", "facts")); err != nil {
+		t.Errorf("dış hafıza kurulmadı: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf("dış hafızada .gitignore yazılmamalı (err=%v)", err)
 	}
 }
 
