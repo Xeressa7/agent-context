@@ -34,6 +34,25 @@ func TestDoctorHealthy(t *testing.T) {
 	}
 }
 
+// Kapsam alanı `scope`'tur (init şablonu onu yazar); emekli `role` yalnız geri
+// uyum için kabul edilir. İkisi de yoksa kurulum eksiktir.
+func TestDoctorScopeField(t *testing.T) {
+	for _, c := range []struct {
+		ad, alan string
+		kod      int
+	}{
+		{"scope", "scope: [current]\n", 0},
+		{"emekli role", "role: current\n", 0},
+		{"hicbiri", "", 1},
+	} {
+		env, out, _ := testEnv()
+		repo := doctorArea(t, "version: 1\nproject: p\nmemory_path: ../mem\n"+c.alan)
+		if code := Doctor(env, repo); code != c.kod {
+			t.Errorf("%s: exit = %d, %d olmalı:\n%s", c.ad, code, c.kod, out.String())
+		}
+	}
+}
+
 func TestDoctorNoManifest(t *testing.T) {
 	env, out, _ := testEnv()
 	if code := Doctor(env, t.TempDir()); code != 1 {

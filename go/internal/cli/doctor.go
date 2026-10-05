@@ -51,8 +51,16 @@ func Doctor(env Env, repo string) int {
 		env.printf("✗ context.yaml okunamadi: %s\n", err)
 		return 1
 	}
-	for _, field := range []string{"project", "memory_path", "role"} {
+	for _, field := range []string{"project", "memory_path"} {
 		check(data.Truthy(field), "context.yaml · "+field+": "+data.Repr(field))
+	}
+	// The repo's scope is judged by THE rule search uses (store.RepoScope):
+	// `scope`, falling back to the retired `role`. Doctor demanding `role` made
+	// every fresh init — whose template writes `scope` — fail its own check.
+	if len(data.List("scope")) == 0 && data.Truthy("role") {
+		check(true, "context.yaml · role: "+data.Repr("role")+" (emekli alan; yerine scope)")
+	} else {
+		check(len(store.RepoScope(data)) > 0, "context.yaml · scope: "+data.Repr("scope"))
 	}
 
 	memory := filepath.Join(filepath.Dir(manifestPath), filepath.FromSlash(data.Str("memory_path")))

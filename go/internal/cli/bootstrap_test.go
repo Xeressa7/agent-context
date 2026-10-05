@@ -49,10 +49,9 @@ func settingsCommands(t *testing.T, home string) string {
 func TestBootstrapRegistersHooks(t *testing.T) {
 	home, proj := bootstrapArea(t)
 	env, _, _ := testEnv()
-	// Çıkış doctor'undur; şablon `role` değil `scope` yazdığı için 1 döner —
-	// iki tarafta da aynı olan önceden bilinen durum, bu testin konusu kancalar.
-	if code := Bootstrap(env, BootstrapOptions{InitOptions: InitOptions{Project: "deneme", Role: "current"}}); code != 1 {
-		t.Fatalf("exit = %d, doctor kodu 1 olmalı", code)
+	// Çıkış doctor'undur: taze bir kurulum kendi sağlık kontrolünden geçmeli.
+	if code := Bootstrap(env, BootstrapOptions{InitOptions: InitOptions{Project: "deneme", Role: "current"}}); code != 0 {
+		t.Fatalf("exit = %d, taze kurulumda doctor 0 dönmeli", code)
 	}
 	_ = proj
 	komutlar := settingsCommands(t, home)
