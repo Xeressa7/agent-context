@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Kancaların ilk kuralı SESSİZLİK: hafıza yoksa tek bayt basmaz, exit 0.
@@ -120,5 +121,30 @@ func TestHookFlushSkipsShort(t *testing.T) {
 	HookFlush(env, FlushOptions{Repo: repo, Transcript: tr, Tool: "claude", Reason: "sessionend"})
 	if _, err := os.Stat(filepath.Join(repo, "..", "mem", "sessions", ".pending")); !os.IsNotExist(err) {
 		t.Errorf("tek turluk oturum yazılmamalı")
+	}
+}
+
+// Eski ham dökümler kanca her koştuğunda budanır; yenisi ve süresi dolmamışlar kalır.
+func TestHookFlushPrunesOldDigests(t *testing.T) {
+	repo := hookArea(t)
+	pending := filepath.Join(repo, "..", "mem", "sessions", ".pending")
+	writeFile(t, filepath.Join(pending, "claude-eski.md"), "eski\n")
+	writeFile(t, filepath.Join(pending, "claude-taze.md"), "taze\n")
+	now := time.Now()
+	os.Chtimes(filepath.Join(pending, "claude-eski.md"), now.AddDate(0, 0, -10), now.AddDate(0, 0, -10))
+	os.Chtimes(filepath.Join(pending, "claude-taze.md"), now.AddDate(0, 0, -2), now.AddDate(0, 0, -2))
+
+	tr := filepath.Join(t.TempDir(), "oturum.jsonl")
+	writeJSONL(t, tr, []string{
+		`{"type": "user", "message": {"content": "bir"}}`,
+		`{"type": "assistant", "message": {"content": [{"type": "text", "text": "iki"}]}}`,
+	})
+	env, _, _ := testEnv()
+	HookFlush(env, FlushOptions{Repo: repo, Transcript: tr, Tool: "claude", Now: now})
+	if _, err := os.Stat(filepath.Join(pending, "claude-eski.md")); !os.IsNotExist(err) {
+		t.Error("7 günden eski döküm silinmeli")
+	}
+	if _, err := os.Stat(filepath.Join(pending, "claude-taze.md")); err != nil {
+		t.Error("taze döküm kalmalı")
 	}
 }

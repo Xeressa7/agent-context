@@ -272,6 +272,7 @@ func HookFlush(env Env, opts FlushOptions) int {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return 0
 	}
+	prunePending(dir, store.MemoryConfig(ctx.MemoryPath).Int("pending_keep_days", pendingKeepDays), opts.Now)
 
 	// The same transcript at the same length is not written twice (SessionEnd
 	// and PreCompact can fire back to back).
@@ -326,4 +327,32 @@ func pendingDigests(memory string) []string {
 	}
 	sort.Strings(hits)
 	return hits
+}
+
+// pendingKeepDays bounds how long a raw digest waits. A digest is a safety net
+// for a session that closed without a capture decision, but the hook writes one
+// for EVERY session, decided or not: on yapit 94 piled up in a month (1.2 MB of
+// transcripts that may carry PII), and the capture check only ever shows the
+// last three. Older than this, the finding was either captured or is lost to
+// memory anyway; the harness keeps its own transcript longer.
+const pendingKeepDays = 7
+
+// prunePending removes digests older than keepDays (0 or less: keep all).
+func prunePending(dir string, keepDays int, now time.Time) {
+	if keepDays <= 0 {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	cutoff := now.AddDate(0, 0, -keepDays)
+	old, err := filepath.Glob(filepath.Join(dir, "*.md"))
+	if err != nil {
+		return
+	}
+	for _, p := range old {
+		if st, err := os.Stat(p); err == nil && st.ModTime().Before(cutoff) {
+			os.Remove(p)
+		}
+	}
 }

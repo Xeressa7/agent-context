@@ -293,7 +293,7 @@ değil `session_id` verir; oturum SQLite'ta yaşar ve aracın kendi
 `sessions export --redact` arayüzüyle çıkarılır — şema ayrıştırılmaz.
 
 **PII:** transcript gerçek ad/adres taşıyabilir. `sessions/.pending/` gitignore'ludur,
-makine-yereldir ve hafızaya asla commit edilmez.
+makine-yereldir ve hafızaya asla commit edilmez. Kanca her koşuda 7 günden eski dökümleri siler (`<memory>/ctx.yaml → pending_keep_days`, 0 = silme): döküm kararsız kapanmış oturum için bir emniyet ağıdır, ama kanca kararlı kapanan oturum için de yazar. Ölçüldü (yapit, 2026-10-14): bir ayda 94 döküm, 1,2 MB birikti; taramada 77'sinin bulgusu zaten nottaydı, birinde düz metin parola vardı.
 
 ## Bağlam bütçesi
 
