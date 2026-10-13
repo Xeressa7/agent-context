@@ -23,9 +23,9 @@ func TestInitScaffolds(t *testing.T) {
 	}
 	for _, yol := range []string{
 		"context.yaml", "AGENTS.md", "CLAUDE.md",
-		".agents/skills/ctx-ara/SKILL.md",
-		".agents/skills/ctx-yaz/SKILL.md",
-		".agents/skills/ctx-kapat/SKILL.md",
+		".agents/skills/ctx-search/SKILL.md",
+		".agents/skills/ctx-write/SKILL.md",
+		".agents/skills/ctx-close/SKILL.md",
 	} {
 		if _, err := os.Stat(filepath.Join(root, yol)); err != nil {
 			t.Errorf("%s kurulmadı: %v", yol, err)
@@ -107,7 +107,7 @@ func TestInitDoesNotClobber(t *testing.T) {
 		t.Errorf("AGENTS.md ezildi:\n%s", got)
 	}
 	// Skill de aynı: kullanıcının düzenlemesi korunur.
-	skill := filepath.Join(root, ".agents", "skills", "ctx-ara", "SKILL.md")
+	skill := filepath.Join(root, ".agents", "skills", "ctx-search", "SKILL.md")
 	writeFile(t, skill, "benim aramam\n")
 	env2, out2, _ := testEnv()
 	Init(env2, InitOptions{Project: "deneme", Role: "current", Components: "app"})

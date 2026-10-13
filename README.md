@@ -41,7 +41,7 @@ kurulur (kendi Git reposu olarak; projenin reposuna girmez). Bir ürünün birde
 `--memory-path ../myapp-memory` — bu durumda `.gitignore`'a dokunulmaz.
 
 Dört adım: hafıza iskeleti + adapter dosyaları (`context.yaml`, AGENTS router,
-`CLAUDE.md`, `.agents/skills/` altında `ctx-ara`/`ctx-yaz`/`ctx-kapat`) +
+`CLAUDE.md`, `.agents/skills/` altında `ctx-search`/`ctx-write`/`ctx-close`) +
 bulunulan reponun hafızanın `consumers` listesine kaydı →
 `SessionStart` kancaları
 (`settings.json`'a kaydedilir) → hafıza deposunda pre-commit kalite kapısı →

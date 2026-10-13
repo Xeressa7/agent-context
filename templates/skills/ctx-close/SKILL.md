@@ -1,16 +1,16 @@
 ---
-name: ctx-kapat
+name: ctx-close
 description: Oturumu capture kararıyla kapat. Kalıcı bulgu varsa nota yazıp `ctx close --not`, yoksa gerekçeyle `ctx close --yok`. Karar vermemek geçersizdir.
 ---
 
-# ctx-kapat — oturumu kapat
+# ctx-close — oturumu kapat
 
 Kapanışta not yazmayı hatırlamak disiplindir ve güvenilmez; bu skill
 mekanizmayı işletir. Yargı senin, disiplin aracın.
 
 ## Akış
 
-1. Bu oturumda kalıcı bulgu var mı? (`ctx-yaz` testini uygula.)
+1. Bu oturumda kalıcı bulgu var mı? (`ctx-write` testini uygula.)
 2. Varsa: önce notu yaz (uygun klasöre), sonra:
    ```sh
    ctx close --not <hafızaya-göreli-yol> [--not ...]

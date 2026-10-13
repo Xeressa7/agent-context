@@ -244,7 +244,7 @@ var memoryFolders = []string{"facts", "decisions", "pitfalls"}
 
 // skillNames are the model-invoked verbs, installed as `.agents/skills/`.
 // The list lives in ONE place so Python and Go install the same set.
-var skillNames = []string{"ctx-ara", "ctx-yaz", "ctx-kapat"}
+var skillNames = []string{"ctx-search", "ctx-write", "ctx-close"}
 
 func scaffoldMemory(memory, project string) error {
 	for _, d := range []string{"tasks", "sessions"} {

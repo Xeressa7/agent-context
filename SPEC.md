@@ -352,7 +352,7 @@ ctx bootstrap --proje <ad> --kuru     # hiçbir şey yazmadan ne yapacağını g
 ```
 
 Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md +
-`.agents/skills/` (`ctx-ara` · `ctx-yaz` · `ctx-kapat` — modelin çağırdığı
+`.agents/skills/` (`ctx-search` · `ctx-write` · `ctx-close` — modelin çağırdığı
 fiiller, harness'lar dosyadan keşfeder),
 (2) `SessionStart` kancaları `settings.json`'a kaydedilir — kancalar **aracın içindedir**
 (`ctx hook index` · `ctx hook capture-check`), ayrı script dosyası kopyalanmaz,
