@@ -9,3 +9,4 @@ go/ctx
 go/ctx.exe
 bin/ctx.exe
 bin/ctx.bin
+/.memory/
