@@ -18,6 +18,9 @@ type SearchOptions struct {
 	All   bool // ignore the scope filter
 	Top   int
 	Min   float64
+	// History also scores the `## Tarihçe` sections. Off by default: a
+	// superseded decision must not surface as if it held today.
+	History bool
 }
 
 type searchHit struct {
@@ -67,13 +70,17 @@ func Search(env Env, opts SearchOptions) int {
 		if !opts.All && !core.Visible(n.FrontMatter, scope, false) {
 			continue
 		}
+		body := n.Body
+		if !opts.History {
+			body = core.CurrentBody(body)
+		}
 		score, ok := core.ScoreNote(core.Note{
 			RelPath:     n.Rel,
 			Title:       n.FrontMatter["title"],
 			Tags:        n.FrontMatter["tags"],
 			Components:  n.FrontMatter["components"],
 			Description: n.FrontMatter["description"],
-			Body:        n.Body,
+			Body:        body,
 		}, words, phrase)
 		if !ok || score.Value < opts.Min {
 			continue

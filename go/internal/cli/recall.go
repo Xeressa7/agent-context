@@ -106,7 +106,8 @@ func RecallForFile(ctx store.Context, file string) ([]recallHit, error) {
 			continue
 		}
 		pathHit, nameHit := false, false
-		refs := fileRefs(n.Body)
+		// A file named only in the history is not what the note is about today.
+		refs := fileRefs(core.CurrentBody(n.Body))
 		distinct := map[string]bool{}
 		for _, ref := range refs {
 			distinct[ref[strings.LastIndex(ref, "/")+1:]] = true

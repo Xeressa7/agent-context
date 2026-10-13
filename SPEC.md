@@ -61,6 +61,50 @@ superseded_by: null               # yerine geçen not varsa göreli yolu
 ---
 ```
 
+## Not içi düzen: Geçerli ve Tarihçe
+
+Bir not **bugün** geçerli olanı, oraya **nasıl gelindiğinden** ayrı tutar:
+
+```markdown
+## Geçerli
+
+(yalnız bugün geçerli olan; değişince BAŞTAN yazılır, üstüne eklenmez)
+
+## Tarihçe
+
+- 2026-10-13 · aynı seviye talebi ENGEL → serbest · ürün sahibi
+```
+
+- **Karar ya da gerçek değişince:** "Geçerli" yeniden yazılır, eski hâl
+  Tarihçe'ye tek satır olarak iner (tarih · eski → yeni · kimin kararı).
+  Yeni kararı eskisinin yanına parantez ya da yeni bölüm olarak eklemek yasaktır.
+- **Arama ve dosya hatırlatması Tarihçe'yi saymaz.** Eski kararı anlatan bir
+  paragraf güncel bilgi gibi bulunmaz. "Bu neden değişti?" sorusu için
+  `ctx search --tarihce` kullanılır.
+- **Başlık katlanarak tanınır:** `## Geçerli`/`## Current` ve
+  `## Tarihçe`/`## History`. Yalnız ikinci seviye başlık bölüm sayılır.
+- **Zorunlu değildir.** Tek paragraflık bir not bölümsüz kalabilir. Değişmiş
+  ve büyümüş notlar ise `ctx bakim` raporunda listelenir.
+
+Ölçüldü (yapit, 2026-10-13, 204 not): 111 notta tarih ya da durum sözcüğü
+taşıyan 315 başlık vardı ("UYGULANDI 2026-09-08"). `superseded_by` alanı hiç
+kullanılmamıştı; kararlar eski notun üstüne yeni bölüm eklenerek değişiyordu.
+Bir örnekte geri alınan karar, eski kararı söyleyen satırın ortasında parantez
+olarak duruyordu.
+
+**`ctx bakim`** salt okunur bir rapordur. Hangi notun bu düzene geçmeye en çok
+ihtiyacı olduğunu sıralar. Sinyaller Tarihçe dışında sayılır:
+
+- tarihli ya da durum bildiren başlık,
+- geri alma ifadesi ("kaldırıldı", "artık", "no longer"),
+- boyut,
+- karar notunda "Geçerli" bölümünün olmaması.
+
+Sözcük listeleri hafızanın `ctx.yaml`'ında `status_markers` ve
+`override_markers` ile genişletilir. Rapor not yazmaz. Bir karar notunda hangi
+ifadenin geçerli olduğunu ürün sahibi söyler, bir fact notunda kod söyler. Araç
+yalnız adayları sıralar.
+
 ## Klasörler
 
 Bir notun tek anlamlı sorusu **"bu ne tür bir iddia ve onu ne geçersiz kılar?"**

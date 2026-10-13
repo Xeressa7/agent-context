@@ -9,6 +9,8 @@ import (
 	"github.com/Xeressa7/agent-context/go/internal/store"
 )
 
+var isolatedTemp = map[string]bool{}
+
 func recallNote(t *testing.T, mem, rel, body string) {
 	t.Helper()
 	writeFile(t, filepath.Join(mem, filepath.FromSlash(rel)),
@@ -17,6 +19,15 @@ func recallNote(t *testing.T, mem, rel, body string) {
 
 func runRecall(t *testing.T, proj, session, file string) string {
 	t.Helper()
+	// The per-session "already shown" record lives in the OS temp dir; a test
+	// must not inherit it from an earlier run.
+	if !isolatedTemp[t.Name()] {
+		dir := t.TempDir()
+		for _, k := range []string{"TMP", "TEMP", "TMPDIR"} {
+			t.Setenv(k, dir)
+		}
+		isolatedTemp[t.Name()] = true
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"session_id": session, "cwd": proj,
 		"tool_input": map[string]any{"file_path": file},

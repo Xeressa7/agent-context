@@ -16,7 +16,7 @@ import (
 const usage = `ctx — agent context araci (Go)
 
 Kullanim:
-  ctx search <sorgu> [--repo YOL] [--all] [--top N] [--min PUAN]
+  ctx search <sorgu> [--repo YOL] [--all] [--top N] [--min PUAN] [--tarihce]
   ctx index [--repo YOL] [--all] [--yaz] [--kontrol]
   ctx validate [--repo YOL] [--memory YOL] [--tam]
   ctx doctor [--repo YOL]
@@ -26,6 +26,7 @@ Kullanim:
   ctx bootstrap --proje AD [--memory-path YOL] [--role ...] [--components ...] [--kuru]
   ctx hook index | capture-check | recall | flush  (oturum kancalari — harness cagirir)
    ctx preferences [--repo YOL] [--profile normal|ekonomik|manuel] [--index-budget N]
+  ctx bakim [--repo YOL] [--top N]       (Geçerli/Tarihçe düzenine geçmesi gereken notlar — salt okunur)
    ctx self-update [--check]  (kurulumu güncelle: fetch + fast-forward)
 
 Butun komutlar Go'da.
@@ -65,6 +66,8 @@ func run(env cli.Env, args []string) int {
 		return runHook(env, args[1:])
 	case "preferences":
 		return runPreferences(env, args[1:])
+	case "bakim":
+		return runMaintenance(env, args[1:])
 	case "self-update":
 		return runSelfUpdate(env, args[1:])
 	case "-h", "--help", "help":
@@ -121,6 +124,7 @@ func runSearch(env cli.Env, args []string) int {
 	fs.BoolVar(&opts.All, "all", false, "kapsam filtresi uygulama")
 	fs.IntVar(&opts.Top, "top", 8, "en fazla kac kanonik sonuc gosterilsin")
 	fs.Float64Var(&opts.Min, "min", 0, "bu puanin altindaki sonuclari gizle")
+	fs.BoolVar(&opts.History, "tarihce", false, "notlarin Tarihce bolumlerinde de ara")
 	flags, rest := reorder(fs, args)
 	if err := fs.Parse(flags); err != nil {
 		return 2
@@ -296,6 +300,18 @@ func runPreferences(env cli.Env, args []string) int {
 		return 2
 	}
 	return cli.Preferences(env, opts)
+}
+
+func runMaintenance(env cli.Env, args []string) int {
+	fs := flag.NewFlagSet("bakim", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	opts := cli.MaintenanceOptions{}
+	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
+	fs.IntVar(&opts.Top, "top", 20, "en fazla kac aday gosterilsin (0 = hepsi)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return cli.Maintenance(env, opts)
 }
 
 func runSelfUpdate(env cli.Env, args []string) int {
