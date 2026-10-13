@@ -33,13 +33,15 @@ type MaintenanceOptions struct {
 
 var datedHeading = regexp.MustCompile(`\b20\d\d-\d\d-\d\d\b`)
 
+var codeSpan = regexp.MustCompile("`[^`]*`")
+
 // statusWords and overrideMarkers are folded. A project adds its own through
 // the memory's ctx.yaml (`status_markers`, `override_markers`).
 var statusWords = []string{"uygulandi", "kodlandi", "yapildi", "cozuldu", "tamamlandi",
 	"kapandi", "done", "implemented", "fixed", "shipped"}
 
 var overrideMarkers = []string{"kaldirildi", "vazgecildi", "iptal edildi", "yerine gecti",
-	"artik ", "eskiden", "gecersiz", "tersine cevrildi", "no longer", "superseded", "reverted"}
+	"artik ", "eskiden", "tersine cevrildi", "no longer", "superseded", "reverted"}
 
 type maintenanceRow struct {
 	rel                    string
@@ -62,7 +64,8 @@ func maintenanceRowFor(n store.Note, status, override []string) maintenanceRow {
 		}
 	}
 	for _, line := range strings.Split(core.CurrentBody(n.Body), "\n") {
-		if containsAny(core.Fold(line), override) {
+		// Code spans name things (`superseded_by`); they do not state a change.
+		if containsAny(core.Fold(codeSpan.ReplaceAllString(line, "")), override) {
 			r.overrides++
 		}
 	}

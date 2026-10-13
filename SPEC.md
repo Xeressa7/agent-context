@@ -96,7 +96,7 @@ olarak duruyordu.
 ihtiyacı olduğunu sıralar. Sinyaller Tarihçe dışında sayılır:
 
 - tarihli ya da durum bildiren başlık,
-- geri alma ifadesi ("kaldırıldı", "artık", "no longer"),
+- geri alma ifadesi ("kaldırıldı", "artık", "no longer"; genel "geçersiz" bilerek yok — "neyle geçersiz olur" tablosu yanlış alarm veriyordu),
 - boyut,
 - karar notunda "Geçerli" bölümünün olmaması.
 

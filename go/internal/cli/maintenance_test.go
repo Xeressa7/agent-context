@@ -13,7 +13,7 @@ func TestMaintenanceRanksLogLikeNotes(t *testing.T) {
 	mem := ctx.MemoryPath
 	logLike := "---\ntitle: g\ndescription: d\n---\n\n## Ödeme ucu — UYGULANDI 2026-09-08\n\nx\n\n" +
 		"## Kararlar (2026-10-04)\n\naynı seviye serbest (eski engel kaldırıldı)\n"
-	layered := "---\ntitle: l\ndescription: d\n---\n\n## Geçerli\n\naynı seviye serbest.\n\n" +
+	layered := "---\ntitle: l\ndescription: d\n---\n\n## Geçerli\n\naynı seviye serbest; `superseded_by` kullanılmaz.\n\n" +
 		"## Tarihçe\n\n- 2026-10-13: engel kaldırıldı (ürün sahibi)\n\n### UYGULANDI 2026-09-08\n"
 	writeFile(t, filepath.Join(mem, "decisions", "gunluk.md"), logLike)
 	writeFile(t, filepath.Join(mem, "decisions", "duzenli.md"), layered)
