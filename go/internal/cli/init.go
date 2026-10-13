@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	root "github.com/Xeressa7/agent-context"
+	"github.com/Xeressa7/agent-context/go/internal/store"
 )
 
 // InitOptions mirrors the Python `ctx init` arguments.
@@ -34,7 +35,7 @@ func Init(env Env, opts InitOptions) int {
 		env.errorf("HATA: calisma dizini okunamadi: %s\n", err)
 		return 2
 	}
-	memoryRel := memoryRelPath(opts)
+	memoryRel := memoryRelPath(cwd, opts)
 	memory := memoryRel
 	if !filepath.IsAbs(memory) {
 		memory = filepath.Join(cwd, filepath.FromSlash(memoryRel))
@@ -158,9 +159,18 @@ const defaultMemoryDir = ".memory"
 
 // memoryRelPath is the memory_path written to context.yaml. ONE place, so init
 // and bootstrap can never disagree about the default.
-func memoryRelPath(opts InitOptions) string {
+// memoryRelPath picks the memory location: the flag, else the memory_path of a
+// context.yaml already in the project, else the default. Without the middle
+// step a re-run in a consumer repo (memory_path: ../.memory) planned a second,
+// empty memory inside that repo plus a .gitignore line for it.
+func memoryRelPath(cwd string, opts InitOptions) string {
 	if opts.MemoryPath != "" {
 		return opts.MemoryPath
+	}
+	if m, err := store.ReadManifest(filepath.Join(cwd, "context.yaml")); err == nil {
+		if p := m.Str("memory_path"); p != "" {
+			return p
+		}
 	}
 	return defaultMemoryDir
 }

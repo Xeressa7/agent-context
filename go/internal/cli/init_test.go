@@ -93,6 +93,27 @@ func TestInitExternalMemoryLeavesGitignoreAlone(t *testing.T) {
 	}
 }
 
+// Tüketici repoda yeniden koşum: context.yaml'daki memory_path kullanılır; repo
+// içinde ikinci, boş bir .memory açılmaz ve .gitignore'a satır eklenmez.
+func TestInitHonoursExistingMemoryPath(t *testing.T) {
+	alan := t.TempDir()
+	root := filepath.Join(alan, "sunucu")
+	writeFile(t, filepath.Join(root, "context.yaml"),
+		"version: 1\nproject: p\nmemory_path: ../.memory\n")
+	chdir(t, root)
+	env, _, _ := testEnv()
+	Init(env, InitOptions{Project: "p", Role: "current", Components: "server"})
+	if _, err := os.Stat(filepath.Join(root, ".memory")); !os.IsNotExist(err) {
+		t.Errorf("repo içinde ikinci hafıza açılmamalı (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(alan, ".memory", "facts")); err != nil {
+		t.Errorf("hafıza context.yaml'daki yolda olmalı: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf("repo dışındaki hafıza için .gitignore yazılmamalı (err=%v)", err)
+	}
+}
+
 func TestInitDoesNotClobber(t *testing.T) {
 	alan := t.TempDir()
 	root := filepath.Join(alan, "proj")

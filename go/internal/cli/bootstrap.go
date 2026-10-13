@@ -79,7 +79,7 @@ func Bootstrap(env Env, opts BootstrapOptions) int {
 	}
 	env.printf("proje kokku: %s\n", cwd)
 
-	memoryRel := memoryRelPath(opts.InitOptions)
+	memoryRel := memoryRelPath(cwd, opts.InitOptions)
 	memory := memoryRel
 	if !filepath.IsAbs(memory) {
 		memory = filepath.Join(cwd, filepath.FromSlash(memoryRel))

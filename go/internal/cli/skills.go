@@ -6,8 +6,7 @@ import (
 	"regexp"
 )
 
-// skillNames are the model-invoked verbs. The list lives in ONE place so
-// Python and Go install the same set.
+// skillNames are the model-invoked verbs, listed in one place.
 var skillNames = []string{"ctx-search", "ctx-write", "ctx-close"}
 
 // skillRoots: `.agents/skills` is the Codex/agents convention, `.claude/skills`
