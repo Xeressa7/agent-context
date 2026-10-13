@@ -35,8 +35,27 @@ updated: YYYY-MM-DD        # bugünün tarihi
 superseded_by: null
 ---
 
-(gövde: kural + ölçüldüğü gerçek iş)
+## Geçerli
+
+(yalnız bugün geçerli olan: kural + ölçüldüğü gerçek iş)
+
+## Tarihçe
+
+- YYYY-MM-DD · eski → yeni · kimin kararı
 ```
+
+## Önce ara, sonra yaz
+
+Yazmadan önce `ctx search "<konu>"` çalıştır. Aynı konuda not varsa
+**yeni not açma, o notu güncelle**:
+
+- Karar ya da gerçek değiştiyse "Geçerli" bölümünü BAŞTAN yaz. Eski hâli
+  Tarihçe'ye tek satır olarak indir (tarih · eski → yeni · kimin kararı).
+- Eski kararın yanına parantez ya da yeni bölüm olarak ekleme yapma. Arama
+  bütün gövdeyi okur ve iki çelişkili ifade yan yana kalır.
+- Ürün kararında hangisinin geçerli olduğunu kullanıcı söyler, emin değilsen
+  sor. Sistemin nasıl çalıştığını anlatan notta (fact) kodu oku.
+- Bölümsüz eski bir nota dokunuyorsan onu bu düzene geçir.
 
 - "Şöyle olmalı" tek başına yetmez; kaç örnekte, hangi gerçek işte
   ölçüldüğü yazılır. Ölçülmemiş şey "varsayım" diye işaretlenir.
