@@ -133,9 +133,8 @@ func RecallForFile(ctx store.Context, file string) ([]recallHit, error) {
 	if len(byName)+len(byPath) > recallMaxNotes {
 		byName = nil // generic name: only path matches are trusted
 	}
-	if len(byPath) > recallMaxNotes {
-		return nil, nil // pointing everywhere is pointing nowhere
-	}
+	// A path is precise even when several notes name it (yapit: four notes name
+	// `backend/app/repositories/beton.py`); the most specific ones lead below.
 	hits := append(byPath, byName...)
 	sort.SliceStable(hits, func(i, j int) bool {
 		if hits[i].byPath != hits[j].byPath {

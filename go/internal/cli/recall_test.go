@@ -159,3 +159,21 @@ func TestIndexNamesOnlyTier(t *testing.T) {
 		t.Errorf("index_style: adlar bütçeden bağımsız ad kademesi vermeli:\n%s", forced)
 	}
 }
+
+// Aynı yolu dörtten çok not ansa da yol isabetlidir: en odaklı (en az dosya
+// anan) iki not gelir, hiçbiri susturulmaz.
+func TestRecallManyPathMatchesKeepsMostSpecific(t *testing.T) {
+	ctx, proj := indexArea(t)
+	mem := ctx.MemoryPath
+	recallNote(t, mem, "decisions/odakli.md", "`app/repositories/beton.py`")
+	for _, n := range []string{"g1", "g2", "g3"} {
+		recallNote(t, mem, "facts/"+n+".md", "`app/repositories/beton.py` `a.py` `b.py` `c.py`")
+	}
+	got := runRecall(t, proj, "m", filepath.Join(proj, "backend", "app", "repositories", "beton.py"))
+	if !strings.Contains(got, "odakli.md") {
+		t.Errorf("en odaklı not gelmeli:\n%s", got)
+	}
+	if n := strings.Count(got, "- `"); n != recallTop {
+		t.Errorf("%d not gelmeli, %d geldi:\n%s", recallTop, n, got)
+	}
+}
