@@ -190,6 +190,24 @@ hedefleri `context.yaml → index_targets` belirler (varsayılan `AGENTS.md`; Cu
 kuralı veya `copilot-instructions.md` de hedef olabilir — işaretleri taşıyan her
 dosya tüketicidir).
 
+**Yalnız haritayı taşıyan dosya üretilmiş çıktıdır, git'e girmez.** `index_targets`'ta
+adı açıkça verilen hedef (ör. `MEMORY-INDEX.md`) yoksa `ctx index --yaz` ve
+`ctx close` onu işaretleriyle birlikte **sıfırdan üretir**; `--kontrol` ve `ctx doctor`
+yalnız söyler. Böylece dosya tüketici repoda `.gitignore`'lanabilir ve taze klonda ilk
+tazelemeyle geri gelir. Ölçüldü (yapit, 2026-10-13): haritayı commit eden üç repoda
+326 commit yalnız harita tazelemesiydi — her yeni not, tüketici başına bir commit.
+Varsayılan `AGENTS.md` sıfırdan **üretilmez**: router bloğunu `ctx bootstrap` yazar,
+yalnız harita taşıyan bir `AGENTS.md` kurulu repo gibi görünür ama router'sızdır.
+
+**Bileşen süzgeci (isteğe bağlı).** `context.yaml → index_components: true` haritayı
+reponun `components` listesiyle daraltır; kural kapsamla aynıdır (`components`'ı olmayan
+not evrenseldir, kesişme varsa gelir). Yalnız **harita** daralır, arama daralmaz:
+bileşen notun nerede doğru olduğunu değil nerede en çok işe yaradığını söyler — istemci
+reposundaki ajan sunucunun sözleşmesini yine arayıp bulabilmelidir. Daralma sessiz
+değildir; haritada "Başka bileşenlerin N notu bu haritada yok" satırı yazar. Varsayılan
+kapalıdır, çünkü `ctx init` yer tutucu bir bileşen (`app`) yazar ve mevcut notlar onu
+taşımaz.
+
 Bayatlık yapısal olarak kapatılır: `ctx close --not <yol>` yeni notu kaydettiği anda
 hedef blokları **tazeler**; `ctx index --kontrol` bayatsa 1 döner; `ctx doctor` bunu
 uyarı olarak gösterir. Yani "hook'u olan araç yeni notu görür, dosyadan okuyan araç

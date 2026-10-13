@@ -76,11 +76,31 @@ func Visible(fm map[string]string, repoScope []string, includeArchived bool) boo
 	if len(noteScope) == 0 || len(repoScope) == 0 {
 		return true
 	}
-	in := make(map[string]struct{}, len(repoScope))
-	for _, s := range repoScope {
+	return intersects(noteScope, repoScope)
+}
+
+// ComponentsMatch reports whether a note belongs on a repo's MAP by component.
+//
+// Same rule as scope, applied to a different axis: a note without components
+// is universal, a repo without components applies no filter, otherwise the
+// two must intersect. It is deliberately NOT part of Visible: components say
+// where a note is most useful, not where it is true, so search keeps every
+// component and only the always-loaded map — which costs every session —
+// narrows by it, and only when the repo opts in.
+func ComponentsMatch(fm map[string]string, repoComponents []string) bool {
+	noteComponents := SplitList(fm["components"])
+	if len(noteComponents) == 0 || len(repoComponents) == 0 {
+		return true
+	}
+	return intersects(noteComponents, repoComponents)
+}
+
+func intersects(a, b []string) bool {
+	in := make(map[string]struct{}, len(b))
+	for _, s := range b {
 		in[s] = struct{}{}
 	}
-	for _, s := range noteScope {
+	for _, s := range a {
 		if _, ok := in[s]; ok {
 			return true
 		}

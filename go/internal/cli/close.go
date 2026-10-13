@@ -364,6 +364,9 @@ func refreshIndex(env Env, ctx store.Context) {
 		for _, target := range IndexTargets(other) {
 			raw, err := os.ReadFile(target)
 			if err != nil {
+				if generatedTarget(other, target, err) && writeGenerated(other, target, body) == nil {
+					env.printf("  ↻ %s · hafiza haritasi uretildi\n", shortTarget(target))
+				}
 				continue
 			}
 			text := string(raw)

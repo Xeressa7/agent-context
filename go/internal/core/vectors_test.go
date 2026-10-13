@@ -88,8 +88,23 @@ func TestVisibilityVectors(t *testing.T) {
 			Scope  []string          `json:"scope"`
 			Why    string            `json:"why"`
 		} `json:"validity"`
+		Components []struct {
+			Note           map[string]string `json:"note"`
+			RepoComponents []string          `json:"repo_components"`
+			Match          bool              `json:"match"`
+			Why            string            `json:"why"`
+		} `json:"components"`
 	}
 	load(t, "visibility.json", &v)
+	if len(v.Components) == 0 {
+		t.Fatal("visibility.json: components vakasi yok")
+	}
+	for _, c := range v.Components {
+		if got := ComponentsMatch(c.Note, c.RepoComponents); got != c.Match {
+			t.Errorf("ComponentsMatch(%v, %v) = %v, want %v\n  why: %s",
+				c.Note, c.RepoComponents, got, c.Match, c.Why)
+		}
+	}
 
 	for _, c := range v.Cases {
 		if got := Visible(c.Note, c.RepoScope, c.Archive); got != c.Visible {

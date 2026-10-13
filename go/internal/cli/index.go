@@ -102,11 +102,19 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 		return "", err
 	}
 	scope := store.RepoScope(ctx.Data)
+	var components []string
+	if !all && indexComponentsOn(ctx.Data) {
+		components = ctx.Data.List("components")
+	}
 
 	groups := map[string][]string{}
-	count := 0
+	count, elsewhere := 0, 0
 	for _, n := range notes {
 		if !all && !core.Visible(n.FrontMatter, scope, false) {
+			continue
+		}
+		if !core.ComponentsMatch(n.FrontMatter, components) {
+			elsewhere++
 			continue
 		}
 		group, name, _ := strings.Cut(n.Rel, "/")
@@ -119,6 +127,9 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 	if len(scope) > 0 {
 		scopeText = strings.Join(scope, ", ")
 	}
+	if len(components) > 0 {
+		scopeText += " · bileşen: " + strings.Join(components, ", ")
+	}
 	memoryName := filepath.Base(filepath.FromSlash(ctx.Data.Str("memory_path")))
 	lines := []string{
 		"### Hafıza haritası — " + memoryName + " · kapsam: " + scopeText + " · " + itoa(count) + " not",
@@ -127,6 +138,12 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 			"Hedefli arama `ctx search \"<sorgu>\"`; bütün korpusu topluca yükleme.",
 		"Açık işler `" + orDefault(ctx.Data.Str("task_state"), "tasks/OPEN.md") + "` · " +
 			"oturum devamı `" + orDefault(ctx.Data.Str("session_state"), "sessions/CURRENT.md") + "`.",
+	}
+	// The narrowing is said out loud: a map that silently omits notes reads as
+	// "this is all of it", and the omitted note is never searched for.
+	if elsewhere > 0 {
+		lines = append(lines, "Başka bileşenlerin "+itoa(elsewhere)+" notu bu haritada yok; "+
+			"`ctx search` onları da bulur.")
 	}
 
 	var ordered []string
@@ -149,6 +166,18 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 		lines = append(lines, groups[g]...)
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// indexComponentsOn reports whether the map narrows by the repo's components
+// (`index_components`, default off). Opt-in because `ctx init` writes a
+// placeholder component ("app") that existing notes never carry: turning the
+// filter on by default would empty those maps.
+func indexComponentsOn(m store.Manifest) bool {
+	switch strings.ToLower(strings.TrimSpace(m.Str("index_components"))) {
+	case "true", "1", "yes", "evet", "acik", "açık":
+		return true
+	}
+	return false
 }
 
 // Index prints the map, or refreshes it inside the target files.
@@ -260,8 +289,21 @@ func refreshConsumer(env Env, manifestPath string, opts IndexOptions) int {
 	for _, target := range IndexTargets(ctx) {
 		raw, err := os.ReadFile(target)
 		if err != nil {
-			env.printf("✗ %s · dosya yok\n", target)
-			problems++
+			switch {
+			case !generatedTarget(ctx, target, err):
+				env.printf("✗ %s · dosya yok\n", target)
+				problems++
+			case !opts.Write:
+				env.printf("⚠ %s · uretilmis harita dosyasi yok — `ctx index --yaz`\n", target)
+				problems++
+			default:
+				if err := writeGenerated(ctx, target, body); err != nil {
+					env.printf("✗ %s · yazilamadi: %s\n", target, err)
+					problems++
+					continue
+				}
+				env.printf("✓ %s · uretildi\n", target)
+			}
 			continue
 		}
 		text := string(raw)
@@ -286,6 +328,33 @@ func refreshConsumer(env Env, manifestPath string, opts IndexOptions) int {
 		}
 	}
 	return problems
+}
+
+// generatedTarget reports whether a MISSING target may be produced from
+// scratch: only one the manifest names explicitly. The default AGENTS.md
+// carries the router written by `ctx bootstrap`; a map-only AGENTS.md would
+// pass for a set-up repo while lacking it.
+//
+// Why missing targets are produced at all: a map file is build output. Kept in
+// git, every new note costs one commit per consumer repo — measured on yapit:
+// 326 commits across three repos were nothing but index refreshes. Ignored by
+// git, a fresh clone has no file, so the refresh has to create it.
+func generatedTarget(ctx store.Context, target string, readErr error) bool {
+	if !errors.Is(readErr, os.ErrNotExist) || len(ctx.Data.List("index_targets")) == 0 {
+		return false
+	}
+	info, err := os.Stat(filepath.Dir(target))
+	return err == nil && info.IsDir()
+}
+
+// writeGenerated creates a map-only target file around the marked block.
+func writeGenerated(ctx store.Context, target, body string) error {
+	memoryName := filepath.Base(filepath.FromSlash(ctx.Data.Str("memory_path")))
+	text := "# Hafıza haritası — " + memoryName + "\n\n" +
+		"> Bu dosyayı `ctx index --yaz` üretir; ELLE DÜZENLEME. Üretilmiş dosyadır,\n" +
+		"> git'te tutulması gerekmez (yerelde yeniden üretilir).\n\n" +
+		indexStart + "\n" + body + "\n" + indexEnd + "\n"
+	return os.WriteFile(target, []byte(text), 0o644)
 }
 
 // IndexTargets resolves context.yaml's index_targets (default AGENTS.md). The

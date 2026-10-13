@@ -196,5 +196,56 @@
       ],
       "why": "virgullu scope string'i listeye bolunur"
     }
+  ],
+  "components": [
+    {
+      "note": {
+        "title": "x"
+      },
+      "repo_components": [
+        "client"
+      ],
+      "match": true,
+      "why": "components'i olmayan not EVRENSELDIR — her bilesenin haritasinda"
+    },
+    {
+      "note": {
+        "components": "server"
+      },
+      "repo_components": [],
+      "match": true,
+      "why": "repo bileseni tanimsizsa filtre uygulanmaz"
+    },
+    {
+      "note": {
+        "components": "server"
+      },
+      "repo_components": [
+        "client"
+      ],
+      "match": false,
+      "why": "kesisme yok — baska bilesenin notu haritada yer tutmaz"
+    },
+    {
+      "note": {
+        "components": "server, client"
+      },
+      "repo_components": [
+        "client"
+      ],
+      "match": true,
+      "why": "tek ortak bilesen yeter; virgullu string listeye bolunur"
+    },
+    {
+      "note": {
+        "components": "server",
+        "status": "archived"
+      },
+      "repo_components": [
+        "server"
+      ],
+      "match": true,
+      "why": "bilesen ekseni status'ten BAGIMSIZDIR — arsivi Visible eler, bu kural degil"
+    }
   ]
 }

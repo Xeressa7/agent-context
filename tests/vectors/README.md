@@ -13,7 +13,7 @@ sayısı** olması.
 |---|---|
 | `normalize.json` | Arama normalizasyonu — Unicode katlama, aksan düşürme, çok dillilik |
 | `scoring.json` | Alan ağırlıkları, VEYA adaylığı, kapsama çarpanı, tam ifade bonusu |
-| `visibility.json` | `status` + `scope` görünürlük kuralı ve eski `lifecycle` çevrimi |
+| `visibility.json` | `status` + `scope` görünürlük kuralı, eski `lifecycle` çevrimi ve haritanın `components` süzgeci |
 | `checksum.json` | Luhn (kart) ve ISO 7064 mod-97 (IBAN) sağlamaları |
 | `frontmatter.json` | Frontmatter ayrıştırma ve liste normalizasyonu |
 

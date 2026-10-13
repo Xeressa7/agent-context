@@ -16,3 +16,4 @@ session_state: {memory_path}/sessions/CURRENT.md
 # Oturum bağlam tercihi (`ctx preferences` yönetir; yorum satırı pasiftir):
 # index_budget: 6000   # kanca enjeksiyon tavanı, karakter (varsayılan 16000)
 # auto_index: false    # oturum başında harita enjekte etme (varsayılan açık)
+# index_components: true   # haritayı bu reponun components'ıyla daralt (arama daralmaz)

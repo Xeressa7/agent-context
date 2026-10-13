@@ -126,7 +126,11 @@ func Doctor(env Env, repo string) int {
 			for _, target := range IndexTargets(ctx) {
 				raw, err := os.ReadFile(target)
 				if err != nil {
-					warns = append(warns, Finding{"uyari", target, "index hedefi yok"})
+					msg := "index hedefi yok"
+					if generatedTarget(ctx, target, err) {
+						msg = "uretilmis harita dosyasi yok — `ctx index --yaz` uretir"
+					}
+					warns = append(warns, Finding{"uyari", target, msg})
 					continue
 				}
 				text := string(raw)
