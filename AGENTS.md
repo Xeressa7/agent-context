@@ -12,8 +12,11 @@ Oturum sonunda capture kararı ver: kalıcı bulgu varsa nota yazıp `ctx close 
 yoksa `ctx close --yok "<gerekçe>"` — karar vermemek geçersizdir.
 
 <!-- ctx:index:basla -->
-### Hafıza haritası — agent-context · kapsam: current · 0 not
+### Hafıza haritası — agent-context · kapsam: current · 1 not
 
 Bu bir **harita**, notun kendisi değil: ilgili satırı görünce **o notu aç**. Hedefli arama `ctx search "<sorgu>"`; bütün korpusu topluca yükleme.
 Açık işler `.memory/tasks/OPEN.md` · oturum devamı `.memory/sessions/CURRENT.md`.
+
+**decisions/**
+- `hatirlatma-tetigi.md` — Notları bağlama otomatik getiren kanca kullanıcı mesajıyla değil ajanın dokunduğu dosyayla…
 <!-- ctx:index:bitir -->
