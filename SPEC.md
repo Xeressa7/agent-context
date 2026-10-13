@@ -84,7 +84,7 @@ Bir not **bugün** geçerli olanı, oraya **nasıl gelindiğinden** ayrı tutar:
 - **Başlık katlanarak tanınır:** `## Geçerli`/`## Current` ve
   `## Tarihçe`/`## History`. Yalnız ikinci seviye başlık bölüm sayılır.
 - **Zorunlu değildir.** Tek paragraflık bir not bölümsüz kalabilir. Değişmiş
-  ve büyümüş notlar ise `ctx bakim` raporunda listelenir.
+  ve büyümüş notlar ise `ctx audit` raporunda listelenir.
 
 Ölçüldü (yapit, 2026-10-13, 204 not): 111 notta tarih ya da durum sözcüğü
 taşıyan 315 başlık vardı ("UYGULANDI 2026-09-08"). `superseded_by` alanı hiç
@@ -92,7 +92,7 @@ kullanılmamıştı; kararlar eski notun üstüne yeni bölüm eklenerek değiş
 Bir örnekte geri alınan karar, eski kararı söyleyen satırın ortasında parantez
 olarak duruyordu.
 
-**`ctx bakim`** salt okunur bir rapordur. Hangi notun bu düzene geçmeye en çok
+**`ctx audit`** salt okunur bir rapordur. Hangi notun bu düzene geçmeye en çok
 ihtiyacı olduğunu sıralar. Sinyaller Tarihçe dışında sayılır:
 
 - tarihli ya da durum bildiren başlık,

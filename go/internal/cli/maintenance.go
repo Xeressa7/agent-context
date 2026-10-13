@@ -10,7 +10,7 @@ import (
 	"github.com/Xeressa7/agent-context/go/internal/store"
 )
 
-// `ctx bakim` — which notes most need the Geçerli/Tarihçe layout.
+// `ctx audit` — which notes most need the Geçerli/Tarihçe layout.
 //
 // READ-ONLY, on purpose. Restructuring a note means deciding which of two
 // conflicting statements holds today; for a decision only its owner can say,
@@ -131,7 +131,7 @@ func Maintenance(env Env, opts MaintenanceOptions) int {
 		return rows[i].rel < rows[j].rel
 	})
 
-	env.printf("Bakim — %d aktif not · %d tanesi `## Geçerli` duzeninde · %d aday\n\n",
+	env.printf("Bakım raporu — %d aktif not · %d tanesi `## Geçerli` duzeninde · %d aday\n\n",
 		active, layered, len(rows))
 	shown := rows
 	if opts.Top > 0 && len(shown) > opts.Top {

@@ -26,7 +26,7 @@ Kullanim:
   ctx bootstrap --proje AD [--memory-path YOL] [--role ...] [--components ...] [--kuru]
   ctx hook index | capture-check | recall | flush  (oturum kancalari — harness cagirir)
    ctx preferences [--repo YOL] [--profile normal|ekonomik|manuel] [--index-budget N]
-  ctx bakim [--repo YOL] [--top N]       (Geçerli/Tarihçe düzenine geçmesi gereken notlar — salt okunur)
+  ctx audit [--repo YOL] [--top N]       (Geçerli/Tarihçe düzenine geçmesi gereken notlar — salt okunur)
    ctx self-update [--check]  (kurulumu güncelle: fetch + fast-forward)
 
 Butun komutlar Go'da.
@@ -66,7 +66,7 @@ func run(env cli.Env, args []string) int {
 		return runHook(env, args[1:])
 	case "preferences":
 		return runPreferences(env, args[1:])
-	case "bakim":
+	case "audit":
 		return runMaintenance(env, args[1:])
 	case "self-update":
 		return runSelfUpdate(env, args[1:])
@@ -303,7 +303,7 @@ func runPreferences(env cli.Env, args []string) int {
 }
 
 func runMaintenance(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("bakim", flag.ContinueOnError)
+	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	opts := cli.MaintenanceOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")

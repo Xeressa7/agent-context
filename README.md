@@ -64,7 +64,7 @@ mevcut kancaların, ilgisiz ayarların ve projenin kendi `core.hooksPath`'inin
 | `ctx init` / `ctx bootstrap` | Yeni proje kurulumu |
 | `ctx hook index` / `hook capture-check` | SessionStart kancaları (harness çağırır) |
 | `ctx hook flush` | SessionEnd/PreCompact kancası: ham oturum dökümünü `sessions/.pending/`e düşürür |
-| `ctx bakim [--top N]` | Geçerli/Tarihçe düzenine geçmesi gereken notları sıralar (salt okunur) |
+| `ctx audit [--top N]` | Geçerli/Tarihçe düzenine geçmesi gereken notları sıralar (salt okunur) |
 | `ctx hook recall` | PostToolUse kancası: ajanın okuduğu/değiştirdiği dosyayı anan notları bağlama ekler |
 | `ctx preferences [--profile normal\\|ekonomik\\|manuel] [--index-budget N]` | Oturum bağlam tercihi: harita bütçesi + otomatik harita |
 
