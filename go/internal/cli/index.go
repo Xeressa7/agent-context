@@ -67,11 +67,26 @@ func shorten(text string, limit int) string {
 // the line there, and the agent can open the note.
 const indexBudget = 16000
 
-var descLimitSteps = []int{descLimit, 80, 55, 35}
+// descLimitSteps shrink the descriptions; namesOnly is the last tier. A 35-
+// character tier existed until 2026-10-13 and was dropped: measured on yapit,
+// a description clipped that far kept nothing ("`fatura-hakedis.md` — F"),
+// while the file names alone — descriptive slugs — cost ~2,800 characters for
+// 204 notes against 16,000 for the clipped list.
+var descLimitSteps = []int{descLimit, 80, 55}
+
+const namesOnly = 0
+
+const namesOnlyNote = "\n\n[not: harita yalniz dosya adlarindan ibaret — aciklama ve tam metin " +
+	"notun kendisinde; `ctx search \"<sorgu>\"` aciklamalarda da arar]"
 
 // IndexBodyBudgeted fits the map under the ceiling, full first, then with
-// progressively shorter descriptions.
+// progressively shorter descriptions, then as file names only.
+// `index_style: adlar` goes straight to the names.
 func IndexBodyBudgeted(ctx store.Context, budget int) (string, error) {
+	if indexNamesOnly(ctx.Data) {
+		body, err := indexBodyLimited(ctx, false, namesOnly)
+		return body + namesOnlyNote, err
+	}
 	body, err := IndexBody(ctx, false)
 	if err != nil || budget <= 0 || len([]rune(body)) <= budget {
 		return body, err
@@ -86,8 +101,24 @@ func IndexBodyBudgeted(ctx store.Context, budget int) (string, error) {
 				itoa(limit) + " karaktere kisaltildi — tam metin notun kendisindedir]", nil
 		}
 	}
-	return body + "\n\n[not: harita EN KISA bicimde bile tavani asiyor; " +
-		"korpus bolunmeli — `ctx doctor`]", nil
+	body, err = indexBodyLimited(ctx, false, namesOnly)
+	if err != nil {
+		return body, err
+	}
+	if len([]rune(body)) > budget {
+		return body + "\n\n[not: harita yalniz dosya adlariyla bile tavani asiyor; " +
+			"korpus bolunmeli — `ctx doctor`]", nil
+	}
+	return body + namesOnlyNote, nil
+}
+
+// indexNamesOnly reports `index_style: adlar` (names-only map, any budget).
+func indexNamesOnly(m store.Manifest) bool {
+	switch strings.ToLower(strings.TrimSpace(m.Str("index_style"))) {
+	case "adlar", "names":
+		return true
+	}
+	return false
 }
 
 // IndexBody renders the note map. Deterministic by construction: the walk is
@@ -118,8 +149,12 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 			continue
 		}
 		group, name, _ := strings.Cut(n.Rel, "/")
-		groups[group] = append(groups[group],
-			"- `"+name+"` — "+shorten(n.FrontMatter["description"], limit))
+		if limit == namesOnly {
+			groups[group] = append(groups[group], strings.TrimSuffix(name, ".md"))
+		} else {
+			groups[group] = append(groups[group],
+				"- `"+name+"` — "+shorten(n.FrontMatter["description"], limit))
+		}
 		count++
 	}
 
@@ -131,6 +166,10 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 		scopeText += " · bileşen: " + strings.Join(components, ", ")
 	}
 	memoryName := filepath.Base(filepath.FromSlash(ctx.Data.Str("memory_path")))
+	// `.memory` names nothing; the project does.
+	if strings.HasPrefix(memoryName, ".") && ctx.Data.Str("project") != "" {
+		memoryName = ctx.Data.Str("project")
+	}
 	lines := []string{
 		"### Hafıza haritası — " + memoryName + " · kapsam: " + scopeText + " · " + itoa(count) + " not",
 		"",
@@ -162,6 +201,11 @@ func indexBodyLimited(ctx store.Context, all bool, limit int) (string, error) {
 	ordered = append(ordered, rest...)
 
 	for _, g := range ordered {
+		if limit == namesOnly {
+			lines = append(lines, "", "**"+g+"/** ("+itoa(len(groups[g]))+"): "+
+				strings.Join(groups[g], " · "))
+			continue
+		}
 		lines = append(lines, "", "**"+g+"/**")
 		lines = append(lines, groups[g]...)
 	}

@@ -27,8 +27,13 @@ const hookEventName = "SessionStart"
 // follows Python's json.dumps defaults, because this output replaces a Python
 // hook's byte for byte.
 func hookOutput(context string) (string, error) {
+	return hookOutputFor(hookEventName, context)
+}
+
+// hookOutputFor is the same envelope for another hook event.
+func hookOutputFor(event, context string) (string, error) {
 	inner := jsonx.NewObject()
-	inner.Set("hookEventName", hookEventName)
+	inner.Set("hookEventName", event)
 	inner.Set("additionalContext", context)
 	outer := jsonx.NewObject()
 	outer.Set("hookSpecificOutput", inner)

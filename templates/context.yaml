@@ -17,3 +17,5 @@ session_state: {memory_path}/sessions/CURRENT.md
 # index_budget: 6000   # kanca enjeksiyon tavanı, karakter (varsayılan 16000)
 # auto_index: false    # oturum başında harita enjekte etme (varsayılan açık)
 # index_components: true   # haritayı bu reponun components'ıyla daralt (arama daralmaz)
+# index_style: adlar   # harita yalnız dosya adları (en ucuz; açıklamalar notta)
+# auto_recall: false   # dokunulan dosyayı anan notları ekleme (varsayılan açık)

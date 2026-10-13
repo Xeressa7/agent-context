@@ -181,6 +181,7 @@ yüklenir. Harita notun kendisi değildir; ajan haritada isabet görünce **o no
 |---|---|---|
 | Claude Code | `SessionStart` hook `ctx index` çıktısını bağlama basar | her oturum, canlı |
 | Claude Code / Hermes | `SessionEnd` + `PreCompact` hook `ctx hook flush` ile ham oturum dökümünü diske düşürür | her kapanış |
+| Claude Code | `PostToolUse` hook `ctx hook recall` dokunulan dosyayı anan notları ekler | her dosya çağrısı |
 | Codex / Cursor / Copilot | `AGENTS.md` içindeki `ctx:index` bloğu | `ctx index --yaz` |
 | harness'sız / CI | `ctx index` çıktısını okur | anında |
 
@@ -259,10 +260,43 @@ ile değişir (`ctx preferences --profile ekonomik` 6.000 yazar, `--index-budget
 açık değer verir); `auto_index: false` enjeksiyonu kapatır (`ctx preferences
 --profile manuel`), `ctx doctor` bunu uyarı olarak gösterir.
 
-Tavan aşılınca **not düşürülmez** — açıklama kısaltılır (95 → 80 → 55 → 35) ve
-kısaltma çıktıda açıkça yazılır. Not düşürmek sessiz kapsam kaybıdır: harita
-"hepsi bu" diye okunur ve görünmeyen not hiç aranmaz. En kısa biçimde bile
-sığmıyorsa bu da yüksek sesle söylenir; sessizce kırpılmaz.
+Tavan aşılınca **not düşürülmez** — açıklama kısaltılır (95 → 80 → 55), sonra
+harita **yalnız dosya adlarına** iner; kısaltma çıktıda açıkça yazılır. Not
+düşürmek sessiz kapsam kaybıdır: harita "hepsi bu" diye okunur ve görünmeyen not
+hiç aranmaz. Dosya adları bile sığmıyorsa bu da yüksek sesle söylenir.
+`index_style: adlar` bütçeden bağımsız olarak doğrudan ad kademesini seçer.
+
+35 karakterlik kademe 2026-10-13'te kaldırıldı. Ölçüldü (yapit, 204 not): o
+uzunlukta açıklamadan geriye bilgi kalmıyordu (`fatura-hakedis.md` — F). Buna
+karşılık açıklayıcı dosya adları 204 not için yaklaşık 2.800 karakter tutuyordu;
+kırpılmış liste ise 16.000 karakterdi.
+
+## Dosyaya dokununca hatırlatma
+
+Harita "ne var" sorusunu cevaplar; ama ajan çoğu zaman notu ancak işine yarayacağı
+anda arar. Claude Code'da `PostToolUse` kancası (`ctx hook recall`, eşleyici
+`Read|Edit|MultiEdit|Write|NotebookEdit`) ajanın okuduğu ya da değiştirdiği dosyayı
+**adıyla anan notları** bağlama ekler (en çok 2). Aynı not aynı oturumda ikinci
+kez eklenmez; `auto_recall: false` kancayı kapatır.
+
+Tetik mesaj değil dosyadır. İkisi de ölçüldü (yapit, 2026-10-13):
+
+- **Mesaja göre arama:** kullanıcının 268 gerçek mesajında sözcük eşleştirmesi
+  76 mesaja not ekledi ve eklenen notların çoğu ilgisizdi. Mesajlar sohbet diliyle
+  yazılıyor ("bunu da commitle") ve konuyu nadiren adıyla söylüyor.
+- **Dosyaya göre arama:** dosya yolu bulanık değildir. 204 notun 174'ü en az bir
+  kod dosyası anıyor ve anılan 593 dosyanın 416'sını tek bir not anıyor. Ajanların
+  1.976 gerçek dosya çağrısının 572'si bir not getirdi.
+
+Gürültü kuralları:
+
+- Dört ya da daha fazla notta geçen bir ad hiçbir yeri göstermez.
+- Genel adlar (`conftest.py`, `main.ts` …) yalnız yolla eşleşir.
+- 50'den fazla dosya anan katalog notu yalnız yolla bulunur.
+
+Bu aynı zamanda bayatlığa karşı en ucuz önlemdir. Bir dosyayı anlatan not tam o
+dosya okunurken ya da değiştirilirken ajanın önüne gelir: bayat iddianın zarar
+verebileceği an da, düzeltilebileceği an da budur.
 
 ## Kurulum
 

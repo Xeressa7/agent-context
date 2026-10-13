@@ -24,7 +24,7 @@ Kullanim:
   ctx init <proje> [--memory-path YOL] [--role current|legacy] [--components LISTE]
   ctx migrate [--repo YOL] [--kuru]
   ctx bootstrap --proje AD [--memory-path YOL] [--role ...] [--components ...] [--kuru]
-  ctx hook index | capture-check | flush  (oturum kancalari — harness cagirir)
+  ctx hook index | capture-check | recall | flush  (oturum kancalari — harness cagirir)
    ctx preferences [--repo YOL] [--profile normal|ekonomik|manuel] [--index-budget N]
    ctx self-update [--check]  (kurulumu güncelle: fetch + fast-forward)
 
@@ -324,7 +324,7 @@ func runHook(env cli.Env, args []string) int {
 		return 2
 	}
 	if len(rest) == 0 {
-		fmt.Fprint(os.Stderr, "HATA: hook adi verilmedi (index | capture-check | flush).\n")
+		fmt.Fprint(os.Stderr, "HATA: hook adi verilmedi (index | capture-check | recall | flush).\n")
 		return 2
 	}
 	switch rest[0] {
@@ -332,6 +332,8 @@ func runHook(env cli.Env, args []string) int {
 		return cli.HookIndex(env, repo)
 	case "capture-check":
 		return cli.HookCaptureCheck(env, repo)
+	case "recall":
+		return cli.HookRecall(env, repo)
 	case "flush":
 		return cli.HookFlush(env, cli.FlushOptions{
 			Repo: repo, Transcript: transcript, Tool: tool, Reason: reason})

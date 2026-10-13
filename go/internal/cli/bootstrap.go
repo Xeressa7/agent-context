@@ -28,17 +28,23 @@ type hookEntry struct {
 	legacyScript string
 	message      string
 	timeout      int
+	matcher      string // tool-name filter; "" = the event's first group
 }
 
 var hookEntries = []hookEntry{
-	{"SessionStart", "capture-check", "ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20},
-	{"SessionStart", "index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20},
+	{"SessionStart", "capture-check", "ctx_capture_check.py", "Capture karari kontrol ediliyor...", 20, ""},
+	{"SessionStart", "index", "ctx_index.py", "Hafiza haritasi yukleniyor...", 20, ""},
 	// Close and compaction: the session digest is dropped to disk. The model
 	// has to remember nothing — MECHANISM, not discipline. The transcript path
 	// arrives on stdin and no model is called, so it returns fast.
-	{"SessionEnd", "flush --arac claude --sebep sessionend", "", "Oturum dokumu kaydediliyor...", 15},
-	{"PreCompact", "flush --arac claude --sebep precompact", "", "Oturum dokumu kaydediliyor...", 15},
+	{"SessionEnd", "flush --arac claude --sebep sessionend", "", "Oturum dokumu kaydediliyor...", 15, ""},
+	{"PreCompact", "flush --arac claude --sebep precompact", "", "Oturum dokumu kaydediliyor...", 15, ""},
+	// A file the agent reads or edits brings the notes that name it. Only the
+	// file tools: a matcher-less PostToolUse would spawn ctx on every Bash call.
+	{"PostToolUse", "recall", "", "Hafiza taraniyor...", 10, recallMatcher},
 }
+
+const recallMatcher = "Read|Edit|MultiEdit|Write|NotebookEdit"
 
 // ctxWrapper is the single entry point hooks call. The WRAPPER is registered,
 // not an implementation: bin/ctx picks the compiled binary when there is one
@@ -174,12 +180,32 @@ func installHooks(write bool) []string {
 	changed := false
 	for _, hook := range hookEntries {
 		bucket := settings.Object("hooks").Array(hook.event)
-		if len(bucket) == 0 {
+		at := 0
+		if hook.matcher != "" {
+			// A matcher hook lives in its OWN group: the user's groups for
+			// other tools are never touched.
+			at = -1
+			for i, item := range bucket {
+				if g, ok := item.(*jsonx.Object); ok {
+					if m, _ := g.Get("matcher"); m == hook.matcher {
+						at = i
+						break
+					}
+				}
+			}
+			if at < 0 {
+				g := jsonx.NewObject()
+				g.Set("matcher", hook.matcher)
+				g.Set("hooks", []any{})
+				bucket = append(bucket, g)
+				at = len(bucket) - 1
+			}
+		} else if len(bucket) == 0 {
 			g := jsonx.NewObject()
 			g.Set("hooks", []any{})
 			bucket = append(bucket, g)
 		}
-		group, ok := bucket[0].(*jsonx.Object)
+		group, ok := bucket[at].(*jsonx.Object)
 		if !ok {
 			return append(report, "! settings.json okunamadi ("+hook.event+
 				" bicimi beklenmedik) — hook KAYDEDILMEDI, elle ekleyin")
