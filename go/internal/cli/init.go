@@ -16,6 +16,10 @@ type InitOptions struct {
 	MemoryPath string
 	Role       string
 	Components string
+
+	// UpdateSkills overwrites installed SKILL.md files that differ from the
+	// template. Off by default: a differing file may be the user's edit.
+	UpdateSkills bool // --update-skills (bootstrap)
 }
 
 // Init scaffolds a memory and the adapter files next to it.
@@ -127,34 +131,14 @@ func Init(env Env, opts InitOptions) int {
 		created = append(created, "CLAUDE.md")
 	}
 
-	// Modelin cagirdigi fiiller: arama, yazma, kapatma. Harnness'lar
-	// `.agents/skills/` altindaki SKILL.md'leri dosyadan kesfeder; mevcut
-	// icerik ASLA ezilmez (ikinci kosum "mevcut" der, farkli icerige dokunmaz).
-	for _, name := range skillNames {
-		fresh, err := template("skills/" + name + "/SKILL.md")
-		if err != nil {
-			skipped = append(skipped, ".agents/skills/"+name+"/SKILL.md (sablon yok — ATLANDI)")
-			continue
-		}
-		target := filepath.Join(cwd, ".agents", "skills", name, "SKILL.md")
-		raw, err := os.ReadFile(target)
-		switch {
-		case err == nil && normalizeNewlines(string(raw)) == normalizeNewlines(fresh):
-			skipped = append(skipped, ".agents/skills/"+name+"/SKILL.md (mevcut)")
-		case err == nil || !os.IsNotExist(err):
-			skipped = append(skipped, ".agents/skills/"+name+"/SKILL.md (MEVCUT — DOKUNULMADI)")
-		default:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				env.errorf("HATA: skill yazilamadi: %s\n", err)
-				return 2
-			}
-			if err := writeText(target, fresh); err != nil {
-				env.errorf("HATA: skill yazilamadi: %s\n", err)
-				return 2
-			}
-			created = append(created, ".agents/skills/"+name+"/SKILL.md (skill)")
-		}
+	// Modelin cagirdigi fiiller: arama, yazma, kapatma (bkz. skills.go).
+	skCreated, skSkipped, err := syncSkills(cwd, true, opts.UpdateSkills)
+	if err != nil {
+		env.errorf("HATA: skill yazilamadi: %s\n", err)
+		return 2
 	}
+	created = append(created, skCreated...)
+	skipped = append(skipped, skSkipped...)
 
 	env.printf("\n--- ozet ---\n")
 	for _, c := range created {
@@ -188,7 +172,7 @@ func memoryRelPath(opts InitOptions) string {
 // only the missing line is appended (in the file's own line endings), and a
 // second run reports "mevcut". A memory outside the project (../x-memory, an
 // absolute path) is none of this repo's business — status "". With write=false
-// (bootstrap --kuru) the status is computed and nothing is written.
+// (bootstrap --dry-run) the status is computed and nothing is written.
 func ensureGitignored(cwd, memoryRel string, write bool) (entry, status string, err error) {
 	if filepath.IsAbs(memoryRel) {
 		return "", "", nil
@@ -242,10 +226,6 @@ func ensureGitignored(cwd, memoryRel string, write bool) (entry, status string, 
 // .gitkeep) so the shape of the memory is visible before the first note exists.
 var memoryFolders = []string{"facts", "decisions", "pitfalls"}
 
-// skillNames are the model-invoked verbs, installed as `.agents/skills/`.
-// The list lives in ONE place so Python and Go install the same set.
-var skillNames = []string{"ctx-search", "ctx-write", "ctx-close"}
-
 func scaffoldMemory(memory, project string) error {
 	for _, d := range []string{"tasks", "sessions"} {
 		if err := os.MkdirAll(filepath.Join(memory, d), 0o755); err != nil {
@@ -292,7 +272,7 @@ func template(name string) (string, error) {
 // This is not a preference, it is parity: the Python implementation has always
 // written scaffolding with platform line endings, and a Go binary that wrote LF
 // instead would make every generated file differ between the two. (Note the
-// contrast with `ctx index --yaz`, which deliberately PRESERVES whatever the
+// contrast with `ctx index --write`, which deliberately PRESERVES whatever the
 // target file already uses — there the file belongs to someone else.)
 func writeText(path, text string) error {
 	if runtime.GOOS == "windows" {

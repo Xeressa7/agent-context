@@ -20,7 +20,7 @@ import (
 // Two levels:
 //
 //	fast (default) — structure: front matter, required fields, links, review-due
-//	--tam          — plus a PII/secret sweep (expensive; for pre-commit and
+//	--full          — plus a PII/secret sweep (expensive; for pre-commit and
 //	                 deliberate runs)
 //
 // The level split matters: a 90-day-old note is NOT stale, it is REVIEW-DUE.
@@ -287,13 +287,13 @@ func Validate(env Env, opts ValidateOptions) int {
 	if len(findings) == 0 {
 		suffix := ""
 		if !opts.Full {
-			suffix = " (yapisal; PII taramasi icin --tam)"
+			suffix = " (yapisal; PII taramasi icin --full)"
 		}
 		env.printf("✓ bulgu yok%s\n", suffix)
 	} else {
 		suffix := ""
 		if !opts.Full {
-			suffix = " · PII taramasi KOSULMADI (--tam)"
+			suffix = " · PII taramasi KOSULMADI (--full)"
 		}
 		env.printf("\n%d hata · %d uyari%s\n", len(errs), len(warns), suffix)
 	}

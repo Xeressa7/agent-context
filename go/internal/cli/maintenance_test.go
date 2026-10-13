@@ -38,7 +38,7 @@ func TestMaintenanceRanksLogLikeNotes(t *testing.T) {
 	}
 }
 
-// Arama varsayılan olarak Tarihçe'yi saymaz; --tarihce sayar.
+// Arama varsayılan olarak Tarihçe'yi saymaz; --history sayar.
 func TestSearchSkipsHistoryByDefault(t *testing.T) {
 	ctx, proj := indexArea(t)
 	writeFile(t, filepath.Join(ctx.MemoryPath, "decisions", "seviye.md"),
@@ -53,6 +53,6 @@ func TestSearchSkipsHistoryByDefault(t *testing.T) {
 	env2, out2, _ := testEnv()
 	Search(env2, SearchOptions{Repo: proj, Query: "zorlukengeli", Top: 5, History: true})
 	if !strings.Contains(out2.String(), "seviye.md") {
-		t.Errorf("--tarihce ile bulunmali:\n%s", out2.String())
+		t.Errorf("--history ile bulunmali:\n%s", out2.String())
 	}
 }

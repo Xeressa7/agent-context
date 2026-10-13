@@ -118,8 +118,8 @@ func HookCaptureCheck(env Env, repo string) int {
 		"CAPTURE KARARI BEKLIYOR — onceki oturum kalici bulgu karari " +
 			"verilmeden kapanmis:\n\n" + warning + extra + "\n\n" +
 			"Bu oturumun SONUNDA karar ver: kalici bir bulgu varsa once " +
-			"hafizaya yaz, sonra `ctx close --not <yol>`; " +
-			"yoksa `ctx close --yok \"gerekce\"`. Karar VERMEMEK gecersizdir. " +
+			"hafizaya yaz, sonra `ctx close --note <yol>`; " +
+			"yoksa `ctx close --none \"gerekce\"`. Karar VERMEMEK gecersizdir. " +
 			"Kullaniciyi simdi bununla mesgul etme — kapanista hallet.")
 	if err != nil {
 		return 0

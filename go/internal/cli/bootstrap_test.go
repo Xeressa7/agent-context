@@ -129,3 +129,47 @@ func TestBootstrapBrokenSettingsUntouched(t *testing.T) {
 func optsOf(proje string) BootstrapOptions {
 	return BootstrapOptions{InitOptions: InitOptions{Project: proje, Role: "current"}}
 }
+
+// Eski Türkçe bayraklı kanca kaydı yerinde İngilizce bayraklıya çevrilir
+// (ilk kelimeyle eşleşir), ikinci kez eklenmez.
+func TestBootstrapRewritesOldTurkishFlagHooks(t *testing.T) {
+	home, _ := bootstrapArea(t)
+	eski := `"` + ctxWrapper() + `" hook flush --arac claude --sebep sessionend`
+	writeFile(t, filepath.Join(home, ".claude", "settings.json"),
+		`{"hooks": {"SessionEnd": [{"hooks": [{"type": "command", "command": `+jsonString(eski)+`}]}]}}`)
+	env, _, _ := testEnv()
+	Bootstrap(env, optsOf("deneme"))
+	raw := readFile(t, filepath.Join(home, ".claude", "settings.json"))
+	if strings.Contains(raw, "--arac") || strings.Contains(raw, "--sebep") {
+		t.Errorf("eski bayraklar yerinde değişmeli:\n%s", raw)
+	}
+	if strings.Count(raw, "hook flush --tool claude --reason sessionend") != 1 {
+		t.Errorf("tek ve İngilizce bayraklı kayıt beklenir:\n%s", raw)
+	}
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func TestBootstrapDryRunReportsSkillsAndWritesNone(t *testing.T) {
+	_, proj := bootstrapArea(t)
+	writeFile(t, filepath.Join(proj, ".agents", "skills", "ctx-yaz", "SKILL.md"), "---\nname: ctx-yaz\n---\n")
+	opts := optsOf("deneme")
+	opts.Dry = true
+	env, out, _ := testEnv()
+	Bootstrap(env, opts)
+	got := out.String()
+	for _, want := range []string{"ctx-yaz -> ctx-write", ".claude/skills/ctx-close/SKILL.md"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("kuru koşum %q raporlamalı:\n%s", want, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(proj, ".agents", "skills", "ctx-yaz")); err != nil {
+		t.Errorf("kuru koşum taşımamalı: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, ".claude")); !os.IsNotExist(err) {
+		t.Errorf("kuru koşum .claude yazmamalı (err=%v)", err)
+	}
+}

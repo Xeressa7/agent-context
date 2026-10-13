@@ -6,7 +6,7 @@
 # Daha kötüsü: bu depo Python ve Go çıktılarını BAYT BAYT karşılaştırıyor —
 # satır sonunu ortama bırakmak, karşılaştırmanın zeminini kaydırır.
 #
-# `ctx index --yaz`ın hedef dosyanın kendi satır sonunu KORUMASI ayrı bir
+# `ctx index --write`ın hedef dosyanın kendi satır sonunu KORUMASI ayrı bir
 # konudur ve öyle kalmalı: orada tüketici reponun biçimine uyulur.
 * text=auto eol=lf
 

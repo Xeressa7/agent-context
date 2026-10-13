@@ -310,7 +310,7 @@ func HookFlush(env Env, opts FlushOptions) int {
 		"Arac: `" + tool + "` · kaynak: `" + filepath.Base(opts.Transcript) + "` · " +
 		strconv.Itoa(len(turns)) + " tur (son " + strconv.Itoa(shown) + " tanesi asagida).\n\n" +
 		"Bu HAM dokumdur, not degildir. Kalici bulgu varsa uygun klasore yaz,\n" +
-		"sonra `ctx close --not <yol>` calistir ve bu dosyayi SIL.\n\n---\n\n" +
+		"sonra `ctx close --note <yol>` calistir ve bu dosyayi SIL.\n\n---\n\n" +
 		digestBody(turns) + "\n"
 	if os.WriteFile(filepath.Join(dir, tool+"-"+stamp+".md"), []byte(body), 0o644) != nil {
 		return 0

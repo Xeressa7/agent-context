@@ -16,20 +16,20 @@ import (
 const usage = `ctx — agent context araci (Go)
 
 Kullanim:
-  ctx search <sorgu> [--repo YOL] [--all] [--top N] [--min PUAN] [--tarihce]
-  ctx index [--repo YOL] [--all] [--yaz] [--kontrol]
-  ctx validate [--repo YOL] [--memory YOL] [--tam]
+  ctx search <sorgu> [--repo YOL] [--all] [--top N] [--min PUAN] [--history]
+  ctx index [--repo YOL] [--all] [--write] [--check]
+  ctx validate [--repo YOL] [--memory YOL] [--full]
   ctx doctor [--repo YOL]
-  ctx close [--repo YOL] [--yok [GEREKCE]] [--not YOL]... [--kontrol]
+  ctx close [--repo YOL] [--none [GEREKCE]] [--note YOL]... [--check]
   ctx init <proje> [--memory-path YOL] [--role current|legacy] [--components LISTE]
-  ctx migrate [--repo YOL] [--kuru]
-  ctx bootstrap --proje AD [--memory-path YOL] [--role ...] [--components ...] [--kuru]
+  ctx migrate [--repo YOL] [--dry-run]
+  ctx bootstrap --project AD [--memory-path YOL] [--role ...] [--components ...] [--dry-run] [--update-skills]
   ctx hook index | capture-check | recall | flush  (oturum kancalari — harness cagirir)
    ctx preferences [--repo YOL] [--profile normal|ekonomik|manuel] [--index-budget N]
   ctx audit [--repo YOL] [--top N]       (Geçerli/Tarihçe düzenine geçmesi gereken notlar — salt okunur)
    ctx self-update [--check]  (kurulumu güncelle: fetch + fast-forward)
 
-Butun komutlar Go'da.
+Butun komutlar Go'da. Eski Turkce bayrak adlari gizli takma ad olarak kabul edilir.
 `
 
 func main() {
@@ -117,14 +117,13 @@ func reorder(fs *flag.FlagSet, args []string) (flags, positional []string) {
 }
 
 func runSearch(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("search", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("search")
 	opts := cli.SearchOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	fs.BoolVar(&opts.All, "all", false, "kapsam filtresi uygulama")
 	fs.IntVar(&opts.Top, "top", 8, "en fazla kac kanonik sonuc gosterilsin")
 	fs.Float64Var(&opts.Min, "min", 0, "bu puanin altindaki sonuclari gizle")
-	fs.BoolVar(&opts.History, "tarihce", false, "notlarin Tarihce bolumlerinde de ara")
+	boolFlag(fs, &opts.History, "history", "tarihce", "notlarin Tarihce bolumlerinde de ara")
 	flags, rest := reorder(fs, args)
 	if err := fs.Parse(flags); err != nil {
 		return 2
@@ -138,13 +137,12 @@ func runSearch(env cli.Env, args []string) int {
 }
 
 func runIndex(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("index", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("index")
 	opts := cli.IndexOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	fs.BoolVar(&opts.All, "all", false, "kapsam filtresi uygulama")
-	fs.BoolVar(&opts.Write, "yaz", false, "hedef dosyalardaki ctx:index blogunu tazele")
-	fs.BoolVar(&opts.Check, "kontrol", false, "bloklar bayat mi? yazmaz; bayatsa cikis 1")
+	boolFlag(fs, &opts.Write, "write", "yaz", "hedef dosyalardaki ctx:index blogunu tazele")
+	boolFlag(fs, &opts.Check, "check", "kontrol", "bloklar bayat mi? yazmaz; bayatsa cikis 1")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -152,12 +150,11 @@ func runIndex(env cli.Env, args []string) int {
 }
 
 func runValidate(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("validate")
 	opts := cli.ValidateOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	fs.StringVar(&opts.Memory, "memory", "", "hafiza deposunun yolu (manifest aramayi atlar)")
-	fs.BoolVar(&opts.Full, "tam", false, "PII/secret taramasini da kos (pahali)")
+	boolFlag(fs, &opts.Full, "full", "tam", "PII/secret taramasini da kos (pahali)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -165,8 +162,7 @@ func runValidate(env cli.Env, args []string) int {
 }
 
 func runDoctor(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("doctor")
 	var repo string
 	fs.StringVar(&repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	if err := fs.Parse(args); err != nil {
@@ -175,9 +171,9 @@ func runDoctor(env cli.Env, args []string) int {
 	return cli.Doctor(env, repo)
 }
 
-// runClose parses by hand rather than with flag: `--yok` takes an OPTIONAL
+// runClose parses by hand rather than with flag: `--none` takes an OPTIONAL
 // argument (argparse's nargs="?"), which the flag package cannot express, and
-// `--not` is repeatable.
+// `--note` is repeatable. The Turkish spellings stay as hidden aliases.
 func runClose(env cli.Env, args []string) int {
 	opts := cli.CloseOptions{}
 	for i := 0; i < len(args); i++ {
@@ -201,16 +197,16 @@ func runClose(env cli.Env, args []string) int {
 				return 2
 			}
 			opts.Repo = v
-		case "--not", "-not":
+		case "--note", "-note", "--not", "-not":
 			v, ok := next()
 			if !ok {
-				fmt.Fprintf(os.Stderr, "HATA: --not bir yol bekliyor.\n")
+				fmt.Fprintf(os.Stderr, "HATA: --note bir yol bekliyor.\n")
 				return 2
 			}
 			opts.Notes = append(opts.Notes, v)
-		case "--kontrol", "-kontrol":
+		case "--check", "-check", "--kontrol", "-kontrol":
 			opts.Check = true
-		case "--yok", "-yok":
+		case "--none", "-none", "--yok", "-yok":
 			opts.None = true
 			if hasInline {
 				opts.NoneReason = inline
@@ -227,8 +223,7 @@ func runClose(env cli.Env, args []string) int {
 }
 
 func runInit(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("init")
 	opts := cli.InitOptions{}
 	fs.StringVar(&opts.MemoryPath, "memory-path", "", "hafiza deposunun yolu")
 	fs.StringVar(&opts.Role, "role", "current", "kapsam etiketi (current|legacy)")
@@ -246,11 +241,10 @@ func runInit(env cli.Env, args []string) int {
 }
 
 func runMigrate(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("migrate")
 	opts := cli.MigrateOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
-	fs.BoolVar(&opts.Dry, "kuru", false, "hicbir sey yazma, ne yapacagini goster")
+	boolFlag(fs, &opts.Dry, "dry-run", "kuru", "hicbir sey yazma, ne yapacagini goster")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -258,19 +252,19 @@ func runMigrate(env cli.Env, args []string) int {
 }
 
 func runBootstrap(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("bootstrap", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("bootstrap")
 	opts := cli.BootstrapOptions{}
-	fs.StringVar(&opts.Project, "proje", "", "proje adi (zorunlu)")
+	stringFlag(fs, &opts.Project, "project", "proje", "proje adi (zorunlu)")
+	fs.BoolVar(&opts.UpdateSkills, "update-skills", false, "sablondan farkli skill dosyalarini sablonla degistir")
 	fs.StringVar(&opts.MemoryPath, "memory-path", "", "hafiza deposunun yolu")
 	fs.StringVar(&opts.Role, "role", "current", "kapsam etiketi (current|legacy)")
 	fs.StringVar(&opts.Components, "components", "", "bilesen listesi")
-	fs.BoolVar(&opts.Dry, "kuru", false, "hicbir sey yazma, ne yapacagini goster")
+	boolFlag(fs, &opts.Dry, "dry-run", "kuru", "hicbir sey yazma, ne yapacagini goster")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if opts.Project == "" {
-		fmt.Fprint(os.Stderr, "HATA: --proje zorunlu.\n")
+		fmt.Fprint(os.Stderr, "HATA: --project zorunlu.\n")
 		return 2
 	}
 	return cli.Bootstrap(env, opts)
@@ -280,8 +274,7 @@ func runBootstrap(env cli.Env, args []string) int {
 // "given": a passed-but-invalid value (0, negative) must reach the command
 // and fail there, not look like "not passed".
 func runPreferences(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("preferences", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("preferences")
 	opts := cli.PreferencesOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	fs.StringVar(&opts.Profile, "profile", "", "hazir profil (normal|ekonomik|manuel)")
@@ -303,8 +296,7 @@ func runPreferences(env cli.Env, args []string) int {
 }
 
 func runMaintenance(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("audit")
 	opts := cli.MaintenanceOptions{}
 	fs.StringVar(&opts.Repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	fs.IntVar(&opts.Top, "top", 20, "en fazla kac aday gosterilsin (0 = hepsi)")
@@ -315,8 +307,7 @@ func runMaintenance(env cli.Env, args []string) int {
 }
 
 func runSelfUpdate(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("self-update", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("self-update")
 	opts := cli.SelfUpdateOptions{}
 	fs.BoolVar(&opts.Check, "check", false, "yalniz bak, hicbir sey yazma")
 	if err := fs.Parse(args); err != nil {
@@ -328,13 +319,12 @@ func runSelfUpdate(env cli.Env, args []string) int {
 // runHook dispatches the SessionStart hooks. They live in the binary rather
 // than in copied script files so that a working install needs nothing but ctx.
 func runHook(env cli.Env, args []string) int {
-	fs := flag.NewFlagSet("hook", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs := newFlagSet("hook")
 	var repo, transcript, tool, reason string
 	fs.StringVar(&repo, "repo", "", "manifest aramasinin baslayacagi dizin")
 	fs.StringVar(&transcript, "transcript", "", "[flush] okunacak oturum dokumu (JSONL)")
-	fs.StringVar(&tool, "arac", "", "[flush] claude | codex | hermes")
-	fs.StringVar(&reason, "sebep", "", "[flush] sessionend | precompact")
+	stringFlag(fs, &tool, "tool", "arac", "[flush] claude | codex | hermes")
+	stringFlag(fs, &reason, "reason", "sebep", "[flush] sessionend | precompact")
 	flags, rest := reorder(fs, args)
 	if err := fs.Parse(flags); err != nil {
 		return 2
@@ -357,4 +347,38 @@ func runHook(env cli.Env, args []string) int {
 		fmt.Fprintf(os.Stderr, "HATA: bilinmeyen hook: %s\n", rest[0])
 		return 2
 	}
+}
+
+// legacyFlags are the Turkish flag names from before the English rename. They
+// keep working (hooks registered in users' settings.json and docs in other
+// repos call them) but stay out of the usage text.
+var legacyFlags = map[string]bool{
+	"yaz": true, "kuru": true, "kontrol": true, "tam": true, "tarihce": true,
+	"proje": true, "arac": true, "sebep": true,
+}
+
+func newFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Kullanim: ctx %s:\n", name)
+		fs.VisitAll(func(f *flag.Flag) {
+			if !legacyFlags[f.Name] {
+				fmt.Fprintf(fs.Output(), "  --%s\n    \t%s\n", f.Name, f.Usage)
+			}
+		})
+	}
+	return fs
+}
+
+// boolFlag/stringFlag register the English name and its Turkish alias on the
+// SAME variable, so both spellings are indistinguishable after parsing.
+func boolFlag(fs *flag.FlagSet, p *bool, name, legacy, usage string) {
+	fs.BoolVar(p, name, false, usage)
+	fs.BoolVar(p, legacy, false, usage+" (eski ad)")
+}
+
+func stringFlag(fs *flag.FlagSet, p *string, name, legacy, usage string) {
+	fs.StringVar(p, name, "", usage)
+	fs.StringVar(p, legacy, "", usage+" (eski ad)")
 }

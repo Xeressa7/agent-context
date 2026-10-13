@@ -128,7 +128,7 @@ func Doctor(env Env, repo string) int {
 				if err != nil {
 					msg := "index hedefi yok"
 					if generatedTarget(ctx, target, err) {
-						msg = "uretilmis harita dosyasi yok — `ctx index --yaz` uretir"
+						msg = "uretilmis harita dosyasi yok — `ctx index --write` uretir"
 					}
 					warns = append(warns, Finding{"uyari", target, msg})
 					continue
@@ -141,7 +141,7 @@ func Doctor(env Env, repo string) int {
 						"ctx:index isareti yok — blok kurulmamis"})
 				case updated != text:
 					warns = append(warns, Finding{"uyari", filepath.Base(target),
-						"index blogu bayat — `ctx index --yaz`"})
+						"index blogu bayat — `ctx index --write`"})
 				}
 			}
 		}

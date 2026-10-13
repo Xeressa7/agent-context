@@ -42,7 +42,7 @@ geliyordu. Eski notlar okunmaya devam eder; karşılıkları:
 | `legacy` | `status: active`, `scope: [legacy]` |
 | `historical` | `status: archived` |
 
-Dönüştürmek için: `ctx migrate` (`--kuru` ile önce göster).
+Dönüştürmek için: `ctx migrate` (`--dry-run` ile önce göster).
 
 ## Not formatı (frontmatter standardı)
 
@@ -80,7 +80,7 @@ Bir not **bugün** geçerli olanı, oraya **nasıl gelindiğinden** ayrı tutar:
   Yeni kararı eskisinin yanına parantez ya da yeni bölüm olarak eklemek yasaktır.
 - **Arama ve dosya hatırlatması Tarihçe'yi saymaz.** Eski kararı anlatan bir
   paragraf güncel bilgi gibi bulunmaz. "Bu neden değişti?" sorusu için
-  `ctx search --tarihce` kullanılır.
+  `ctx search --history` kullanılır.
 - **Başlık katlanarak tanınır:** `## Geçerli`/`## Current` ve
   `## Tarihçe`/`## History`. Yalnız ikinci seviye başlık bölüm sayılır.
 - **Zorunlu değildir.** Tek paragraflık bir not bölümsüz kalabilir. Değişmiş
@@ -226,7 +226,7 @@ yüklenir. Harita notun kendisi değildir; ajan haritada isabet görünce **o no
 | Claude Code | `SessionStart` hook `ctx index` çıktısını bağlama basar | her oturum, canlı |
 | Claude Code / Hermes | `SessionEnd` + `PreCompact` hook `ctx hook flush` ile ham oturum dökümünü diske düşürür | her kapanış |
 | Claude Code | `PostToolUse` hook `ctx hook recall` dokunulan dosyayı anan notları ekler | her dosya çağrısı |
-| Codex / Cursor / Copilot | `AGENTS.md` içindeki `ctx:index` bloğu | `ctx index --yaz` |
+| Codex / Cursor / Copilot | `AGENTS.md` içindeki `ctx:index` bloğu | `ctx index --write` |
 | harness'sız / CI | `ctx index` çıktısını okur | anında |
 
 **Harness'a bağımlı olmayan yol daima dosyadır**; hook yalnızca kolaylıktır. Blok
@@ -236,8 +236,8 @@ kuralı veya `copilot-instructions.md` de hedef olabilir — işaretleri taşıy
 dosya tüketicidir).
 
 **Yalnız haritayı taşıyan dosya üretilmiş çıktıdır, git'e girmez.** `index_targets`'ta
-adı açıkça verilen hedef (ör. `MEMORY-INDEX.md`) yoksa `ctx index --yaz` ve
-`ctx close` onu işaretleriyle birlikte **sıfırdan üretir**; `--kontrol` ve `ctx doctor`
+adı açıkça verilen hedef (ör. `MEMORY-INDEX.md`) yoksa `ctx index --write` ve
+`ctx close` onu işaretleriyle birlikte **sıfırdan üretir**; `--check` ve `ctx doctor`
 yalnız söyler. Böylece dosya tüketici repoda `.gitignore`'lanabilir ve taze klonda ilk
 tazelemeyle geri gelir. Ölçüldü (yapit, 2026-10-13): haritayı commit eden üç repoda
 326 commit yalnız harita tazelemesiydi — her yeni not, tüketici başına bir commit.
@@ -253,8 +253,8 @@ değildir; haritada "Başka bileşenlerin N notu bu haritada yok" satırı yazar
 kapalıdır, çünkü `ctx init` yer tutucu bir bileşen (`app`) yazar ve mevcut notlar onu
 taşımaz.
 
-Bayatlık yapısal olarak kapatılır: `ctx close --not <yol>` yeni notu kaydettiği anda
-hedef blokları **tazeler**; `ctx index --kontrol` bayatsa 1 döner; `ctx doctor` bunu
+Bayatlık yapısal olarak kapatılır: `ctx close --note <yol>` yeni notu kaydettiği anda
+hedef blokları **tazeler**; `ctx index --check` bayatsa 1 döner; `ctx doctor` bunu
 uyarı olarak gösterir. Yani "hook'u olan araç yeni notu görür, dosyadan okuyan araç
 görmez" ayrışması oluşamaz.
 
@@ -347,17 +347,27 @@ verebileceği an da, düzeltilebileceği an da budur.
 Yeni bir projede sistem **tek komutla** kurulur (proje kökünde):
 
 ```
-ctx bootstrap --proje <ad> [--role <kapsam-etiketi>] [--components "api,web"]
-ctx bootstrap --proje <ad> --kuru     # hiçbir şey yazmadan ne yapacağını göster
+ctx bootstrap --project <ad> [--role <kapsam-etiketi>] [--components "api,web"]
+ctx bootstrap --project <ad> --dry-run     # hiçbir şey yazmadan ne yapacağını göster
 ```
 
 Dört adım: (1) hafıza iskeleti + `context.yaml` + AGENTS router + CLAUDE.md +
-`.agents/skills/` (`ctx-search` · `ctx-write` · `ctx-close` — modelin çağırdığı
-fiiller, harness'lar dosyadan keşfeder),
+`.agents/skills/` ve `.claude/skills/` (`ctx-search` · `ctx-write` · `ctx-close` —
+modelin çağırdığı fiiller, harness'lar dosyadan keşfeder; Claude Code ikincisini
+yükler). Şablondan farklı mevcut skill dosyası raporlanır, yalnız
+`--update-skills` ile ezilir; eski adlı dizinler (`ctx-ara`/`ctx-yaz`/`ctx-kapat`)
+yeni adına taşınır,
 (2) `SessionStart` kancaları `settings.json`'a kaydedilir — kancalar **aracın içindedir**
 (`ctx hook index` · `ctx hook capture-check`), ayrı script dosyası kopyalanmaz,
 (3) hafıza reposunda pre-commit kalite kapısı (`core.hooksPath .githooks`),
 (4) harita bloğu yazılır + `ctx doctor`.
+
+Bayrak adları İngilizcedir (`--write`, `--dry-run`, `--check`, `--full`, `--note`,
+`--none`, `--history`, `--project`, `--tool`, `--reason`). Eski Türkçe adlar
+(`--yaz`, `--kuru`, `--kontrol`, `--tam`, `--not`, `--yok`, `--tarihce`, `--proje`,
+`--arac`, `--sebep`) aynı değişkene bağlı gizli alias olarak kabul edilir; kullanıcıların
+`settings.json`'ındaki eski kanca kayıtları bozulmaz, `bootstrap` yeniden koşunca
+yerinde İngilizce bayraklıya çevrilir.
 
 İki sert söz — ikisi de teste bağlıdır (`tests/test_bootstrap.py`):
 

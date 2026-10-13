@@ -13,7 +13,7 @@ import (
 // BootstrapOptions mirrors the Python `ctx bootstrap` flags.
 type BootstrapOptions struct {
 	InitOptions
-	Dry bool // --kuru
+	Dry bool // --dry-run (eski ad: --kuru)
 }
 
 // hookEntry is one SessionStart hook.
@@ -37,8 +37,8 @@ var hookEntries = []hookEntry{
 	// Close and compaction: the session digest is dropped to disk. The model
 	// has to remember nothing — MECHANISM, not discipline. The transcript path
 	// arrives on stdin and no model is called, so it returns fast.
-	{"SessionEnd", "flush --arac claude --sebep sessionend", "", "Oturum dokumu kaydediliyor...", 15, ""},
-	{"PreCompact", "flush --arac claude --sebep precompact", "", "Oturum dokumu kaydediliyor...", 15, ""},
+	{"SessionEnd", "flush --tool claude --reason sessionend", "", "Oturum dokumu kaydediliyor...", 15, ""},
+	{"PreCompact", "flush --tool claude --reason precompact", "", "Oturum dokumu kaydediliyor...", 15, ""},
 	// A file the agent reads or edits brings the notes that name it. Only the
 	// file tools: a matcher-less PostToolUse would spawn ctx on every Bash call.
 	{"PostToolUse", "recall", "", "Hafiza taraniyor...", 10, recallMatcher},
@@ -65,7 +65,7 @@ func hookCommand(name string) string {
 //
 // The design promise is IDEMPOTENT and NON-DESTRUCTIVE: no existing file is
 // overwritten (settings.json only gains the entry it is missing), and a second
-// run prints "all current". --kuru shows what it would do and writes nothing.
+// run prints "all current". --dry-run shows what it would do and writes nothing.
 func Bootstrap(env Env, opts BootstrapOptions) int {
 	write := !opts.Dry
 	if opts.Dry {
@@ -94,9 +94,16 @@ func Bootstrap(env Env, opts BootstrapOptions) int {
 			return code
 		}
 	} else {
-		env.printf("  ctx init -> %s + context.yaml + AGENTS.md + CLAUDE.md + .agents/skills (3 skill)\n", memory)
+		env.printf("  ctx init -> %s + context.yaml + AGENTS.md + CLAUDE.md + skill'ler (.agents/skills + .claude/skills)\n", memory)
 		if entry, status, _ := ensureGitignored(cwd, memoryRel, false); status == "olusturuldu" || status == "eklendi" {
 			env.printf("  .gitignore -> %s\n", entry)
+		}
+		created, skipped, _ := syncSkills(cwd, false, opts.UpdateSkills)
+		for _, line := range created {
+			env.printf("  olusturulacak: %s\n", line)
+		}
+		for _, line := range skipped {
+			env.printf("  atlanacak    : %s\n", line)
 		}
 	}
 
@@ -213,7 +220,7 @@ func installHooks(write bool) []string {
 		list := group.Array("hooks")
 		want := hookCommand(hook.name)
 		// Matching looks at the hook name's FIRST WORD; the flags after it
-		// (`--arac ...`) can change later, and when they do the entry must be
+		// (`--tool ...`) can change later, and when they do the entry must be
 		// updated IN PLACE, never appended a second time.
 		root := strings.Fields(hook.name)[0]
 

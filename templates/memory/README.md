@@ -39,7 +39,7 @@ alt-tür taşıyorsa yazılır (`type: runbook`).
 Gövde iki bölümlüdür: en üstte `## Geçerli` (yalnız bugün geçerli olan), en altta
 `## Tarihçe` (değişiklik başına tek satır: tarih · eski → yeni · kimin kararı). Karar
 değişince Geçerli BAŞTAN yazılır; yeni karar eskisinin yanına eklenmez. Arama Tarihçe'yi
-saymaz (`ctx search --tarihce` sayar). Düzene geçmesi gereken notlar: `ctx audit`.
+saymaz (`ctx search --history` sayar). Düzene geçmesi gereken notlar: `ctx audit`.
 
 ## Klasörler
 

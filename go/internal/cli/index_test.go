@@ -156,7 +156,7 @@ func TestIndexComponentsFilter(t *testing.T) {
 	}
 }
 
-// Açıkça adı verilen hedef üretilmiş dosyadır: yoksa --yaz onu kurar, --kontrol
+// Açıkça adı verilen hedef üretilmiş dosyadır: yoksa --write onu kurar, --check
 // yalnız söyler. Varsayılan AGENTS.md asla sıfırdan üretilmez.
 func TestIndexGeneratesMissingTarget(t *testing.T) {
 	_, proj := indexArea(t)
@@ -169,7 +169,7 @@ func TestIndexGeneratesMissingTarget(t *testing.T) {
 		t.Errorf("eksik hedefte kontrol 1 dönmeli, %d: %s", code, out.String())
 	}
 	if _, err := os.Stat(target); err == nil {
-		t.Fatal("--kontrol dosya yazmamalı")
+		t.Fatal("--check dosya yazmamalı")
 	}
 
 	env2, out2, _ := testEnv()

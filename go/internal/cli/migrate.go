@@ -11,7 +11,7 @@ import (
 // MigrateOptions mirrors the Python `ctx migrate` flags.
 type MigrateOptions struct {
 	Repo string
-	Dry  bool // --kuru: show what would change, write nothing
+	Dry  bool // --dry-run: show what would change, write nothing
 }
 
 // Migrate rewrites the retired single-axis `lifecycle` field as the

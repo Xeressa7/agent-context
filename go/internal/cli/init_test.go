@@ -118,3 +118,97 @@ func TestInitDoesNotClobber(t *testing.T) {
 		t.Errorf("çıktı %q", out2.String())
 	}
 }
+
+// Claude Code projenin skill'lerini .claude/skills'ten yükler, Codex/agents
+// .agents/skills'ten: ikisine de AYNI içerik kurulmalı.
+func TestInitInstallsSkillsInBothLocations(t *testing.T) {
+	root := t.TempDir()
+	chdir(t, root)
+	env, _, _ := testEnv()
+	Init(env, InitOptions{Project: "deneme", Role: "current", Components: "app"})
+	for _, name := range skillNames {
+		a := readFile(t, filepath.Join(root, ".agents", "skills", name, "SKILL.md"))
+		c := readFile(t, filepath.Join(root, ".claude", "skills", name, "SKILL.md"))
+		if a != c || a == "" {
+			t.Errorf("%s: iki konumda aynı içerik olmalı", name)
+		}
+	}
+}
+
+func TestInitReportsDifferingSkillAndUpdateOverwrites(t *testing.T) {
+	root := t.TempDir()
+	chdir(t, root)
+	opts := InitOptions{Project: "deneme", Role: "current", Components: "app"}
+	env, _, _ := testEnv()
+	Init(env, opts)
+	skill := filepath.Join(root, ".claude", "skills", "ctx-write", "SKILL.md")
+	writeFile(t, skill, "elle değişti\n")
+
+	env2, out2, _ := testEnv()
+	Init(env2, opts)
+	if got := readFile(t, skill); got != "elle değişti\n" {
+		t.Errorf("--update-skills yokken ezildi:\n%s", got)
+	}
+	if !strings.Contains(out2.String(), "farklı — şablondan eski ya da elle değiştirilmiş") {
+		t.Errorf("fark raporlanmalı:\n%s", out2.String())
+	}
+
+	opts.UpdateSkills = true
+	env3, _, _ := testEnv()
+	Init(env3, opts)
+	want, _ := template("skills/ctx-write/SKILL.md")
+	if got := readFile(t, skill); normalizeNewlines(got) != normalizeNewlines(want) {
+		t.Errorf("--update-skills şablonla değiştirmeli:\n%s", got)
+	}
+}
+
+func TestSyncSkillsMigratesLegacyNames(t *testing.T) {
+	root := t.TempDir()
+	chdir(t, root)
+	old := filepath.Join(root, ".agents", "skills", "ctx-ara", "SKILL.md")
+	writeFile(t, old, "---\nname: ctx-ara\ndescription: x\n---\n\n# ctx-ara — ara\n\nelle yazılmış gövde\n")
+
+	// Kuru: yalnız raporlar.
+	created, _, err := syncSkills(root, false, false)
+	if err != nil || !strings.Contains(strings.Join(created, "\n"), "ctx-ara -> ctx-search") {
+		t.Fatalf("kuru koşum taşımayı raporlamalı: %v %v", created, err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Fatalf("kuru koşum taşımamalı: %v", err)
+	}
+
+	created, _, err = syncSkills(root, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(old)); !os.IsNotExist(err) {
+		t.Errorf("eski dizin kalmamalı (err=%v)", err)
+	}
+	got := readFile(t, filepath.Join(root, ".agents", "skills", "ctx-search", "SKILL.md"))
+	if !strings.Contains(got, "name: ctx-search") || !strings.Contains(got, "# ctx-search — ara") ||
+		!strings.Contains(got, "elle yazılmış gövde") || strings.Contains(got, "ctx-ara") {
+		t.Errorf("name/başlık düzeltilmeli, gövde korunmalı:\n%s", got)
+	}
+	if !strings.Contains(strings.Join(created, "\n"), "eski ad tasindi") {
+		t.Errorf("taşıma raporlanmalı: %v", created)
+	}
+}
+
+func TestSyncSkillsLegacyAndNewBothExist(t *testing.T) {
+	root := t.TempDir()
+	chdir(t, root)
+	oldFile := filepath.Join(root, ".agents", "skills", "ctx-kapat", "SKILL.md")
+	newFile := filepath.Join(root, ".agents", "skills", "ctx-close", "SKILL.md")
+	writeFile(t, oldFile, "eski\n")
+	writeFile(t, newFile, "yeni\n")
+	_, skipped, err := syncSkills(root, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, oldFile) != "eski\n" || readFile(t, newFile) != "yeni\n" {
+		t.Error("ikisi de varken hiçbirine dokunulmamalı")
+	}
+	if !strings.Contains(strings.Join(skipped, "\n"), "ikisi de var") {
+		t.Errorf("rapor beklenir: %v", skipped)
+	}
+}

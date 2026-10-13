@@ -21,10 +21,10 @@ import (
 // command never says "write this down" — that is a judgement call. It says
 // "this session does not close before the decision is made".
 //
-//	ctx close --yok ["gerekce"]        no durable finding — a VALID decision
-//	ctx close --not <yol> [--not ...]  these notes were written
+//	ctx close --none ["gerekce"]        no durable finding — a VALID decision
+//	ctx close --note <yol> [--note ...]  these notes were written
 //	ctx close                          status + decision pending (exit 1)
-//	ctx close --kontrol                did the previous session decide? (for hooks)
+//	ctx close --check                did the previous session decide? (for hooks)
 //
 // The decision lands in <memory>/sessions/capture-log.jsonl, and the Capture
 // Decision Coverage metric falls out of that log for free.
@@ -33,10 +33,10 @@ const captureLog = "sessions/capture-log.jsonl"
 // CloseOptions mirrors the Python `ctx close` flags.
 type CloseOptions struct {
 	Repo       string
-	None       bool     // --yok given
+	None       bool     // --none given
 	NoneReason string   // its optional argument
-	Notes      []string // --not, repeatable
-	Check      bool     // --kontrol
+	Notes      []string // --note, repeatable
+	Check      bool     // --check
 }
 
 // captureRecord is written as one JSON line. Field ORDER matters: the Python
@@ -80,7 +80,7 @@ func repoState(dir string) (head string, dirty int) {
 // Measured 2026-08-13: the `yapit/` umbrella is not a git repo, so
 // `rev-parse --show-toplevel` climbed up and took the user's HOME DIRECTORY for
 // the project — "repo: onur5 · HEAD: ? · degisik dosya: 63". Records landed
-// under that same name, so `--kontrol` answered "current" every time: the gate
+// under that same name, so `--check` answered "current" every time: the gate
 // that carries the whole discipline was CLOSED exactly where sessions start.
 //
 // When the umbrella is not a repo, the repositories beneath it are AGGREGATED,
@@ -181,7 +181,7 @@ func Close(env Env, opts CloseOptions) int {
 		}
 		if dirty > 0 && (last == nil || last.Head != head || last.Repo != name) {
 			env.printf("⚠ %s: %d degisik dosya var, bu HEAD icin capture karari YOK.\n"+
-				"  `ctx close --yok \"...\"` ya da `ctx close --not <yol>` ile kapat.\n",
+				"  `ctx close --none \"...\"` ya da `ctx close --note <yol>` ile kapat.\n",
 				name, dirty)
 			return 1
 		}
@@ -200,8 +200,8 @@ func Close(env Env, opts CloseOptions) int {
 			env.printf("son karar: %s · %s\n", orQuestion(last.Timestamp), orQuestion(last.Decision))
 		}
 		env.printf("\nKARAR BEKLENIYOR — bu oturumda kalici bir bulgu var mi?\n")
-		env.printf("  yok  : ctx close --yok \"gerekce\"\n")
-		env.printf("  var  : ctx close --not pitfalls/ornek.md [--not ...]\n")
+		env.printf("  yok  : ctx close --none \"gerekce\"\n")
+		env.printf("  var  : ctx close --note pitfalls/ornek.md [--note ...]\n")
 		env.printf("\n'Durable bulgu yok' GECERLI bir karardir; karar VERMEMEK gecersizdir.\n")
 		return 1
 	}

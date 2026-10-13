@@ -21,8 +21,8 @@ if [ ! -x "$CTX" ] && [ ! -f "$CTX" ]; then
   exit 0
 fi
 
-echo "pre-commit: ctx validate --tam koşuyor..."
-if ! sh "$CTX" validate --tam --memory "$(git rev-parse --show-toplevel)"; then
+echo "pre-commit: ctx validate --full koşuyor..."
+if ! sh "$CTX" validate --full --memory "$(git rev-parse --show-toplevel)"; then
   echo "" >&2
   echo "pre-commit: HATA bulundu, commit durduruldu." >&2
   echo "  Duzelt ve tekrar dene; bilerek atlamak icin: git commit --no-verify" >&2
@@ -30,10 +30,10 @@ if ! sh "$CTX" validate --tam --memory "$(git rev-parse --show-toplevel)"; then
 fi
 
 # Not ekleyip/silip elle commit edildiginde tuketici repolardaki her-zaman-yuklu
-# harita bayatlar (ajan yolunda bunu `ctx close --not` otomatik tazeler). Bu kanca
+# harita bayatlar (ajan yolunda bunu `ctx close --note` otomatik tazeler). Bu kanca
 # tuketicileri BILMEZ — yalnizca hatirlatir; kontrol `ctx doctor`da.
 if git diff --cached --name-only | grep -qE '\.md$'; then
-  echo "pre-commit: not degisti — tuketici repoda 'ctx index --yaz' calistirmayi unutma."
+  echo "pre-commit: not degisti — tuketici repoda 'ctx index --write' calistirmayi unutma."
 fi
 
 exit 0

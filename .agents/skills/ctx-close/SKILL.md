@@ -1,6 +1,6 @@
 ---
 name: ctx-close
-description: Oturumu capture kararıyla kapat. Kalıcı bulgu varsa nota yazıp `ctx close --not`, yoksa gerekçeyle `ctx close --yok`. Karar vermemek geçersizdir.
+description: Oturumu capture kararıyla kapat. Kalıcı bulgu varsa nota yazıp `ctx close --note`, yoksa gerekçeyle `ctx close --none`. Karar vermemek geçersizdir.
 ---
 
 # ctx-close — oturumu kapat
@@ -13,13 +13,13 @@ mekanizmayı işletir. Yargı senin, disiplin aracın.
 1. Bu oturumda kalıcı bulgu var mı? (`ctx-write` testini uygula.)
 2. Varsa: önce notu yaz (uygun klasöre), sonra:
    ```sh
-   ctx close --not <hafızaya-göreli-yol> [--not ...]
+   ctx close --note <hafızaya-göreli-yol> [--note ...]
    ```
    Yeni not haritayı bayatlatır; `close` tüm tüketicilerin `ctx:index`
    bloklarını tazeler.
 3. Yoksa:
    ```sh
-   ctx close --yok "<neden durable bulgu yok>"
+   ctx close --none "<neden durable bulgu yok>"
    ```
    "Durable bulgu yok" GEÇERLİ bir karardır; karar VERMEMEK geçersizdir.
 4. `sessions/CURRENT.md`'yi güncelle — yalnız son iki tur, beş başlık:
@@ -31,7 +31,7 @@ mekanizmayı işletir. Yargı senin, disiplin aracın.
 ## Kontrol
 
 ```sh
-ctx close --kontrol   # önceki oturum kararlı kapandı mı? (kancalar da bunu koşar)
+ctx close --check   # önceki oturum kararlı kapandı mı? (kancalar da bunu koşar)
 ctx validate          # kapanış kapısı; hata varsa iş kapalı sayılmaz
 ```
 

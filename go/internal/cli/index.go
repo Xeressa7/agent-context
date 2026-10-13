@@ -19,7 +19,7 @@ import (
 //
 // One producer (this command), many consumers:
 //   - Claude Code      -> a SessionStart hook prints it straight into context
-//   - Codex/Cursor/... -> a marked block inside AGENTS.md (`ctx index --yaz`)
+//   - Codex/Cursor/... -> a marked block inside AGENTS.md (`ctx index --write`)
 //
 // The block is NOT the notes: one line per note, "what exists, where". The ban
 // on loading the whole corpus survives — the agent sees the map and OPENS the
@@ -338,7 +338,7 @@ func refreshConsumer(env Env, manifestPath string, opts IndexOptions) int {
 				env.printf("✗ %s · dosya yok\n", target)
 				problems++
 			case !opts.Write:
-				env.printf("⚠ %s · uretilmis harita dosyasi yok — `ctx index --yaz`\n", target)
+				env.printf("⚠ %s · uretilmis harita dosyasi yok — `ctx index --write`\n", target)
 				problems++
 			default:
 				if err := writeGenerated(ctx, target, body); err != nil {
@@ -360,7 +360,7 @@ func refreshConsumer(env Env, manifestPath string, opts IndexOptions) int {
 		case updated == text:
 			env.printf("✓ %s · guncel\n", shortTarget(target))
 		case !opts.Write:
-			env.printf("⚠ %s · index blogu BAYAT — `ctx index --yaz`\n", target)
+			env.printf("⚠ %s · index blogu BAYAT — `ctx index --write`\n", target)
 			problems++
 		default:
 			if err := os.WriteFile(target, []byte(updated), 0o644); err != nil {
@@ -395,7 +395,7 @@ func generatedTarget(ctx store.Context, target string, readErr error) bool {
 func writeGenerated(ctx store.Context, target, body string) error {
 	memoryName := filepath.Base(filepath.FromSlash(ctx.Data.Str("memory_path")))
 	text := "# Hafıza haritası — " + memoryName + "\n\n" +
-		"> Bu dosyayı `ctx index --yaz` üretir; ELLE DÜZENLEME. Üretilmiş dosyadır,\n" +
+		"> Bu dosyayı `ctx index --write` üretir; ELLE DÜZENLEME. Üretilmiş dosyadır,\n" +
 		"> git'te tutulması gerekmez (yerelde yeniden üretilir).\n\n" +
 		indexStart + "\n" + body + "\n" + indexEnd + "\n"
 	return os.WriteFile(target, []byte(text), 0o644)

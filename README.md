@@ -31,8 +31,8 @@ sürümü koşar; `ctx doctor` bayatlığı gösterir). Bakımcı sürüm paketi
 Yeni bir projede, proje kökünde:
 
 ```sh
-ctx bootstrap --proje myapp --components "api,web"
-ctx bootstrap --proje myapp --kuru      # önce ne yapacağını göster
+ctx bootstrap --project myapp --components "api,web"
+ctx bootstrap --project myapp --dry-run      # önce ne yapacağını göster
 ```
 
 Hafıza varsayılan olarak proje içinde, `.gitignore`'lu `.memory/` klasörüne
@@ -41,7 +41,8 @@ kurulur (kendi Git reposu olarak; projenin reposuna girmez). Bir ürünün birde
 `--memory-path ../myapp-memory` — bu durumda `.gitignore`'a dokunulmaz.
 
 Dört adım: hafıza iskeleti + adapter dosyaları (`context.yaml`, AGENTS router,
-`CLAUDE.md`, `.agents/skills/` altında `ctx-search`/`ctx-write`/`ctx-close`) +
+`CLAUDE.md`, `ctx-search`/`ctx-write`/`ctx-close` skill'leri — hem `.agents/skills/` (Codex/agents)
+hem `.claude/skills/` (Claude Code) altına) +
 bulunulan reponun hafızanın `consumers` listesine kaydı →
 `SessionStart` kancaları
 (`settings.json`'a kaydedilir) → hafıza deposunda pre-commit kalite kapısı →
@@ -51,14 +52,22 @@ harita bloğu + sağlık kontrolü.
 mevcut kancaların, ilgisiz ayarların ve projenin kendi `core.hooksPath`'inin
 üstüne yazmaz. İkisi de teste bağlı (`tests/test_bootstrap.py`).
 
+Skill dosyası şablondan farklıysa (eski sürüm ya da elle değişiklik) bootstrap
+raporlar ve dokunmaz; şablonla ezmek için `ctx bootstrap --project <ad> --update-skills`.
+Eski adlı skill dizinleri (`ctx-ara`/`ctx-yaz`/`ctx-kapat`) yeni adlarına taşınır.
+
 ## Komutlar
+
+Bayrak adları İngilizcedir. Eski Türkçe adlar (`--yaz`, `--kuru`, `--kontrol`,
+`--tam`, `--not`, `--yok`, `--tarihce`, `--proje`, `--arac`, `--sebep`) eski
+alias olarak çalışmaya devam eder; yardım metninde görünmez.
 
 | Komut | Ne yapar |
 |---|---|
 | `ctx search "<sorgu>"` | Kapsama göre filtreli arama; alan ağırlıklı, aksan-duyarsız |
-| `ctx index [--yaz]` | Her-zaman-yüklü not haritası (hook + `AGENTS.md` bloğu) |
-| `ctx validate [--tam]` | Not + task/OPEN.md tutarlılığı; `--tam` ile PII/secret taraması |
-| `ctx close --not <yol>` / `--yok "<gerekçe>"` | Oturumu capture kararıyla kapatır |
+| `ctx index [--write]` | Her-zaman-yüklü not haritası (hook + `AGENTS.md` bloğu) |
+| `ctx validate [--full]` | Not + task/OPEN.md tutarlılığı; `--full` ile PII/secret taraması |
+| `ctx close --note <yol>` / `--none "<gerekçe>"` | Oturumu capture kararıyla kapatır |
 | `ctx migrate` | Eski `lifecycle` alanını `status` + `scope`'a çevirir |
 | `ctx doctor` | Kurulum sağlığı |
 | `ctx init` / `ctx bootstrap` | Yeni proje kurulumu |
@@ -185,8 +194,8 @@ ince sarmalayıcıydı (bir ctx komutu koş, çıktısını JSON zarfına koy) v
 birer kopya olarak bakım istiyordu. Artık kancalar aracın içinde ve
 `settings.json` doğrudan sarmalayıcıyı çağırıyor. **Eski kayıtlar tanınıp
 yerinde güncellenir** — tanınmasaydı aynı kanca her oturumda iki kez koşardı.
-Geçiş için ilgili projede `ctx bootstrap --proje <ad>` yeter (idempotent ve
-yıkıcı değil; önce `--kuru` ile bakılabilir).
+Geçiş için ilgili projede `ctx bootstrap --project <ad>` yeter (idempotent ve
+yıkıcı değil; önce `--dry-run` ile bakılabilir).
 
 Kancaların ilk kuralı **sessizlik**: her oturum başlangıcında koştukları için
 hafıza kurulu olmayan bir projede tek bayt bile basmazlar ve asla sıfırdan
